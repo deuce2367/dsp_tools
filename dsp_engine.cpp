@@ -330,6 +330,9 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         row.resize(bins_to_extract, -160.0); // fill with tiny dB initially
     }
     result.first_frame_mag.resize(bins_to_extract, -160.0);
+    result.avg_fft.resize(bins_to_extract, -160.0);
+    result.max_hold_fft.resize(bins_to_extract, -1000.0);
+    result.min_hold_fft.resize(bins_to_extract, 1000.0);
     
     spdlog::info("Streaming: [Start {:.2f}s, End {:.2f}s] FFT Size: {}, Extract Bin: {}, Bins: {}, Rows: {}", 
                  result.original_start_time, end_sample / file_sample_rate, fft_size, extract_start_bin, bins_to_extract, num_rows);
@@ -433,6 +436,27 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                 for (size_t i = 0; i < bins_to_extract; ++i) {
                     result.first_frame_mag[i] = result.spectrogram[r][i];
                 }
+            }
+        }
+        
+        // --- SECONDARY PASS: Calculate Max/Min Hold and Average ---
+        // This is extremely fast and thread-safe because we process columns sequentially
+        if (num_rows > 0) {
+            for (size_t i = 0; i < bins_to_extract; ++i) {
+                double sum_db = 0.0;
+                double max_db = -1000.0;
+                double min_db = 1000.0;
+                
+                for (size_t r = 0; r < num_rows; ++r) {
+                    double val = result.spectrogram[r][i];
+                    sum_db += val;
+                    if (val > max_db) max_db = val;
+                    if (val < min_db) min_db = val;
+                }
+                
+                result.avg_fft[i] = sum_db / num_rows;
+                result.max_hold_fft[i] = max_db;
+                result.min_hold_fft[i] = min_db;
             }
         }
         

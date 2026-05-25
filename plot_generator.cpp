@@ -341,9 +341,7 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                                            const std::string& title,
                                            int jpeg_quality,
                                            int png_compression,
-                                           const std::string& line_color_str,
-                                           const std::string& fill_color_str,
-                                           float fill_opacity) {
+                                           const std::string& colormap_name) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
 
     // Dark background
@@ -352,20 +350,31 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     int margin_left = draw_labels ? 60 : 0;
     int margin_bottom = draw_labels ? 40 : 0;
     int margin_top = draw_labels ? 30 : 0;
-    int margin_right = draw_labels ? 20 : 0;
+    int margin_right = draw_labels ? 60 : 0;
     
     int plot_x = margin_left;
     int plot_y = margin_top;
     int plot_w = out_width - margin_left - margin_right;
     int plot_h = out_height - margin_top - margin_bottom;
-    
+
+    // Use empty string for start_time_iso to avoid printing date/time on FFT
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
                        false, max_db, min_db, num_x_ticks, num_y_ticks, "", title);
 
-    RGB line_color = parse_color(line_color_str, {50, 150, 255});
-    RGB fill_color = fill_color_str.empty() ? line_color : parse_color(fill_color_str, line_color);
+    // Helper to extract a color from the requested colormap
+    auto get_cmap_color = [&](float norm) -> RGB {
+        if (colormap_name == "inferno") return Colormap::get_inferno(norm);
+        if (colormap_name == "plasma") return Colormap::get_plasma(norm);
+        if (colormap_name == "magma") return Colormap::get_magma(norm);
+        if (colormap_name == "coolwarm") return Colormap::get_coolwarm(norm);
+        if (colormap_name == "turbo") return Colormap::get_turbo(norm);
+        if (colormap_name == "jet") return Colormap::get_jet(norm);
+        return Colormap::get_viridis(norm); // default
+    };
 
+    RGB line_color = get_cmap_color(0.6f); // Use a prominent color from the upper-middle of the colormap
+    
     int prev_x = -1;
     int prev_y = -1;
     int data_bins = magnitude_db.size();
@@ -374,7 +383,6 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         int bin_idx = x * data_bins / plot_w;
         double db_val = magnitude_db[bin_idx];
         
-        // Map dB to y
         float norm_val = static_cast<float>((db_val - min_db) / (max_db - min_db));
         norm_val = std::clamp(norm_val, 0.0f, 1.0f);
         int y = plot_h - 1 - static_cast<int>(norm_val * (plot_h - 1));
@@ -383,11 +391,9 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
             draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
         }
         
-        // Fill the area under the curve with alpha
-        if (fill_opacity > 0.001f) {
-            for (int fy = y + 1; fy < plot_h; ++fy) {
-                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, fill_opacity);
-            }
+        // Fill opacity
+        for (int fy = y + 1; fy < plot_h; ++fy) {
+            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, line_color, 0.4f);
         }
         
         prev_x = x;

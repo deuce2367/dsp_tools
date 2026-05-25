@@ -45,6 +45,14 @@ if(NOT stb_POPULATED)
   FetchContent_Populate(stb)
 endif()
 
+# nlohmann_json
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG        v3.11.2
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_executable(dsp_plotter
     main.cpp
     dsp_engine.cpp
@@ -64,6 +72,7 @@ target_link_libraries(dsp_plotter
     kfr_dsp
     CLI11::CLI11
     spdlog::spdlog
+    nlohmann_json::nlohmann_json
 )
 
 target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)

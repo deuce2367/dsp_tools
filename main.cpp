@@ -6,6 +6,7 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
+#include <nlohmann/json.hpp>
 
 #include "dsp_engine.hpp"
 #include "plot_generator.hpp"
@@ -25,9 +26,8 @@ int main(int argc, char** argv) {
     int jpeg_quality = 75;
     int png_compression = 8;
     std::string data_type = "float32";
-    std::string fft_color = "50,150,255";
-    std::string fft_fill = "";
-    float fft_fill_opacity = 0.4f;
+    bool peak_detection = false;
+    double peak_threshold = 15.0;
     
     int width = 512;
     int height = 512;
@@ -73,10 +73,8 @@ int main(int argc, char** argv) {
     app.add_option("--png-compression", png_compression, "PNG compression level from 0 (none) to 9 (max) (default: 8)")
         ->check(CLI::Range(0, 9));
 
-    app.add_option("--fft-color", fft_color, "FFT line color name (red, blue) or hex (#ff0000) or RGB (255,0,0) (default: light blue)");
-    app.add_option("--fft-fill", fft_fill, "FFT fill color (defaults to line color)");
-    app.add_option("--fft-fill-opacity", fft_fill_opacity, "FFT fill opacity from 0.0 to 1.0 (default: 0.4)")
-        ->check(CLI::Range(0.0f, 1.0f));
+    app.add_flag("--peak-detection", peak_detection, "Enable squelch signal detection output to CSV");
+    app.add_option("--peak-threshold", peak_threshold, "Signal detection threshold in dB above noise floor (default: 15.0)");
 
     app.add_option("--width", width, "Output image width");
     app.add_option("--height", height, "Output image height");
@@ -174,16 +172,61 @@ int main(int argc, char** argv) {
         int num_channels = 0;
         double timecode = 0.0;
         
-        dsp.get_file_info(input_file, num_channels, file_sr, is_wav, is_blue, format_str, timecode);
-        
-        if (is_wav || is_blue) {
-            format = (num_channels == 2) ? "complex" : "real";
-            if (bandwidth == 0.0) {
-                bandwidth = file_sr / 1e6;
+        // SigMF Intercept
+        bool is_sigmf = false;
+        if (input_file.size() > 11 && (input_file.substr(input_file.size() - 11) == ".sigmf-meta" || input_file.substr(input_file.size() - 11) == ".sigmf-data")) {
+            is_sigmf = true;
+            std::string meta_file = input_file.substr(0, input_file.size() - 11) + ".sigmf-meta";
+            std::string data_file = input_file.substr(0, input_file.size() - 11) + ".sigmf-data";
+            
+            try {
+                std::ifstream f(meta_file);
+                nlohmann::json data = nlohmann::json::parse(f);
+                
+                if (data.contains("global")) {
+                    auto& glob = data["global"];
+                    if (glob.contains("core:sample_rate")) file_sr = glob["core:sample_rate"];
+                    if (glob.contains("core:datatype")) {
+                        std::string dt = glob["core:datatype"];
+                        if (dt == "cf32_le") { format_str = "float32"; num_channels = 2; }
+                        else if (dt == "ci16_le") { format_str = "int16"; num_channels = 2; }
+                        else if (dt == "ci8_le" || dt == "cu8_le") { format_str = "int8"; num_channels = 2; }
+                        else if (dt == "f32_le") { format_str = "float32"; num_channels = 1; }
+                        else if (dt == "i16_le") { format_str = "int16"; num_channels = 1; }
+                    }
+                    if (glob.contains("core:hw")) {
+                        spdlog::info("SigMF HW: {}", glob["core:hw"].get<std::string>());
+                    }
+                }
+                
+                if (data.contains("captures") && data["captures"].is_array() && data["captures"].size() > 0) {
+                    auto& cap = data["captures"][0];
+                    if (cap.contains("core:frequency")) center_freq = cap["core:frequency"].get<double>() / 1e6;
+                }
+                
+                input_file = data_file; // switch input to data file
+                format = (num_channels == 2) ? "complex" : "real";
+                if (bandwidth == 0.0) bandwidth = file_sr / 1e6;
+                
+                spdlog::info("SigMF Detected: SR: {} Hz, Center: {} MHz, Format: {}", file_sr, center_freq, format_str);
+            } catch (const std::exception& e) {
+                spdlog::warn("Failed to parse SigMF metadata: {}", e.what());
+                is_sigmf = false;
             }
-        } else {
-            // raw fallback
-            if (bandwidth > 0.0) file_sr = bandwidth * 1e6;
+        }
+        
+        if (!is_sigmf) {
+            dsp.get_file_info(input_file, num_channels, file_sr, is_wav, is_blue, format_str, timecode);
+            
+            if (is_wav || is_blue) {
+                format = (num_channels == 2) ? "complex" : "real";
+                if (bandwidth == 0.0) {
+                    bandwidth = file_sr / 1e6;
+                }
+            } else {
+                // raw fallback
+                if (bandwidth > 0.0) file_sr = bandwidth * 1e6;
+            }
         }
         
         if (x_ticks <= 0) x_ticks = std::max(1, width / 256);
@@ -309,13 +352,49 @@ int main(int argc, char** argv) {
             spdlog::info("Waterfall rendered to {} in {:.5f} seconds", wfile, sw_plot);
         }
         
-        if (plot_fft && !first_frame_mag.empty()) {
+        if (plot_fft && !spectrogram.empty()) {
             spdlog::stopwatch sw_plot;
             std::string ffile = output_name + "_fft." + out_format;
             spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
-            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height,
-                                                  final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, fft_color, fft_fill, fft_fill_opacity);
+            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, colormap);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
+        }
+
+        if (peak_detection && !spectrogram.empty() && !result.avg_fft.empty()) {
+            spdlog::stopwatch sw_peaks;
+            
+            // Calculate global noise floor using median of avg_fft
+            std::vector<double> sorted_avg = result.avg_fft;
+            std::sort(sorted_avg.begin(), sorted_avg.end());
+            double noise_floor = sorted_avg[sorted_avg.size() / 2];
+            
+            std::string csv_file = output_name + "_peaks.csv";
+            std::ofstream out_csv(csv_file);
+            out_csv << "Time_s,Freq_MHz,Power_dB\n";
+            
+            int num_rows = spectrogram.size();
+            int num_bins = spectrogram[0].size();
+            int detections = 0;
+            
+            for (int r = 0; r < num_rows; ++r) {
+                double time_s = result.original_start_time + (r * static_cast<double>(result.actual_step_size)) / fs;
+                
+                // Find local maxima in this row
+                for (int c = 1; c < num_bins - 1; ++c) {
+                    double val = spectrogram[r][c];
+                    if (val > noise_floor + peak_threshold) {
+                        if (val > spectrogram[r][c-1] && val > spectrogram[r][c+1]) {
+                            double freq_mhz = z_center - (result.actual_zoom_bw/2.0) + (c * result.actual_zoom_bw / num_bins);
+                            out_csv << std::fixed << std::setprecision(3) << time_s << "," 
+                                    << std::setprecision(6) << freq_mhz << "," 
+                                    << std::setprecision(1) << val << "\n";
+                            detections++;
+                        }
+                    }
+                }
+            }
+            spdlog::info("Detected {} peak events above {:.1f} dB threshold (Noise Floor: {:.1f} dB) in {:.5f} seconds. Saved to {}", 
+                         detections, peak_threshold, noise_floor, sw_peaks, csv_file);
         }
 
         spdlog::info("Done! Process complete.");

@@ -68,7 +68,10 @@ public:
 
     struct StreamingResult {
         std::vector<std::vector<double>> spectrogram;
-        std::vector<double> first_frame_mag; 
+        std::vector<double> first_frame_mag;
+        std::vector<double> avg_fft;
+        std::vector<double> max_hold_fft;
+        std::vector<double> min_hold_fft; 
         size_t actual_step_size = 0;
         double actual_zoom_center = 0.0;
         double actual_zoom_bw = 0.0;

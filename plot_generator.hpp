@@ -33,7 +33,5 @@ public:
                                        const std::string& title = "",
                                        int jpeg_quality = 90,
                                        int png_compression = 8,
-                                       const std::string& line_color_str = "50,150,255",
-                                       const std::string& fill_color_str = "",
-                                       float fill_opacity = 0.4f);
+                                       const std::string& colormap_name = "jet");
 };
