@@ -44,11 +44,63 @@ std::vector<double> DspEngine::compute_fft_magnitude_db(const std::vector<double
     
     return mag_db;
 }
-void DspEngine::get_wav_info(const std::string& filename, int& channels, double& sample_rate) {
-    auto reader = kfr::audio_reader_wav<double>(kfr::open_file_for_reading(filename));
-    const kfr::audio_format_and_length& fmt = reader.format();
-    channels = fmt.channels;
-    sample_rate = fmt.samplerate;
+void DspEngine::get_file_info(const std::string& filename, int& channels, double& sample_rate, bool& is_wav, bool& is_blue, std::string& format_str, double& timecode) {
+    is_wav = false;
+    is_blue = false;
+    format_str = "float32";
+    timecode = 0.0;
+
+    if (filename.size() >= 4) {
+        std::string ext = filename.substr(filename.size() - 4);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".wav") is_wav = true;
+        if (ext == ".prm" || ext == ".tmp") is_blue = true;
+    }
+
+    if (is_wav) {
+        auto reader = kfr::audio_reader_wav<double>(kfr::open_file_for_reading(filename));
+        const kfr::audio_format_and_length& fmt = reader.format();
+        channels = fmt.channels;
+        sample_rate = fmt.samplerate;
+    } else if (is_blue) {
+        int fd = open(filename.c_str(), O_RDONLY);
+        if (fd < 0) throw std::runtime_error("Cannot open BLUE file: " + filename);
+        BlueHeader hdr;
+        if (read(fd, &hdr, sizeof(BlueHeader)) != sizeof(BlueHeader)) {
+            close(fd);
+            throw std::runtime_error("Invalid BLUE file size");
+        }
+        close(fd);
+        
+        if (strncmp(hdr.version, "BLUE", 4) != 0) {
+            throw std::runtime_error("Not a valid BLUE file");
+        }
+        
+        if (hdr.type != 1000) {
+            throw std::runtime_error("Only Type 1000 BLUE files are supported");
+        }
+        
+        char f_size = hdr.format[0];
+        char f_type = hdr.format[1];
+        
+        if (f_size == 'C') channels = 2;
+        else if (f_size == 'S') channels = 1;
+        else throw std::runtime_error(std::string("Unsupported BLUE format size: ") + f_size);
+        
+        if (f_type == 'B') format_str = "int8";
+        else if (f_type == 'I') format_str = "int16";
+        else if (f_type == 'L') format_str = "int32";
+        else if (f_type == 'F') format_str = "float32";
+        else if (f_type == 'D') format_str = "float64";
+        else throw std::runtime_error(std::string("Unsupported BLUE format type: ") + f_type);
+        
+        if (hdr.xdelta > 0.0) {
+            sample_rate = 1.0 / hdr.xdelta;
+        } else {
+            sample_rate = 1.0;
+        }
+        timecode = hdr.timecode;
+    }
 }
 
 struct MmapHandle {
@@ -127,6 +179,31 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
             }
             offset += 8 + csize;
         }
+    } else if (config.is_blue) {
+        if (mmap_file.size < sizeof(BlueHeader)) throw std::runtime_error("BLUE file too small");
+        BlueHeader* hdr = reinterpret_cast<BlueHeader*>(mmap_file.ptr);
+        
+        data_offset = static_cast<size_t>(hdr->data_start);
+        if (data_offset == 0) data_offset = 512; // default
+        
+        char f_size = hdr->format[0];
+        char f_type = hdr->format[1];
+        
+        if (f_size == 'C') channels = 2;
+        else if (f_size == 'S') channels = 1;
+        
+        if (f_type == 'B') bits_per_sample = 8;
+        else if (f_type == 'I') bits_per_sample = 16;
+        else if (f_type == 'L' || f_type == 'F') bits_per_sample = 32;
+        else if (f_type == 'D') bits_per_sample = 64;
+        
+        if (hdr->xdelta > 0.0) file_sample_rate = 1.0 / hdr->xdelta;
+        
+        size_t dsize = static_cast<size_t>(hdr->data_size);
+        if (dsize == 0 || data_offset + dsize > mmap_file.size) {
+            dsize = mmap_file.size - data_offset;
+        }
+        total_samples = dsize / (channels * (bits_per_sample / 8));
     } else {
         // Raw file
         data_offset = 0;
@@ -155,7 +232,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     if (start_sample >= total_samples) start_sample = 0;
     if (end_sample > total_samples || end_sample <= start_sample) end_sample = total_samples;
     
-    result.original_start_time = start_sample / file_sample_rate;
+    result.original_start_time = config.original_timecode + (start_sample / file_sample_rate);
     size_t active_samples = end_sample - start_sample;
     
     // 4. Frequency Zooming
@@ -286,10 +363,18 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                 
                 // Read & Convert
                 if (bits_per_sample == 8) {
-                    const uint8_t* ptr = mmap_file.ptr + byte_offset;
-                    for (size_t i = 0; i < fft_size; ++i) {
-                        if (channels == 2) in_complex[i] = kfr::complex<double>((ptr[2*i] - 127.5)/128.0, (ptr[2*i+1] - 127.5)/128.0) * window[i];
-                        else in_real[i] = ((ptr[i] - 127.5)/128.0) * window[i];
+                    if (config.is_wav) {
+                        const uint8_t* ptr = mmap_file.ptr + byte_offset;
+                        for (size_t i = 0; i < fft_size; ++i) {
+                            if (channels == 2) in_complex[i] = kfr::complex<double>((ptr[2*i] - 127.5)/128.0, (ptr[2*i+1] - 127.5)/128.0) * window[i];
+                            else in_real[i] = ((ptr[i] - 127.5)/128.0) * window[i];
+                        }
+                    } else {
+                        const int8_t* ptr = reinterpret_cast<const int8_t*>(mmap_file.ptr + byte_offset);
+                        for (size_t i = 0; i < fft_size; ++i) {
+                            if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i]/128.0, ptr[2*i+1]/128.0) * window[i];
+                            else in_real[i] = (ptr[i]/128.0) * window[i];
+                        }
                     }
                 } else if (bits_per_sample == 16) {
                     const int16_t* ptr = reinterpret_cast<const int16_t*>(mmap_file.ptr + byte_offset);
@@ -299,6 +384,12 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                     }
                 } else if (bits_per_sample == 32) {
                     const float* ptr = reinterpret_cast<const float*>(mmap_file.ptr + byte_offset);
+                    for (size_t i = 0; i < fft_size; ++i) {
+                        if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i], ptr[2*i+1]) * window[i];
+                        else in_real[i] = ptr[i] * window[i];
+                    }
+                } else if (bits_per_sample == 64) {
+                    const double* ptr = reinterpret_cast<const double*>(mmap_file.ptr + byte_offset);
                     for (size_t i = 0; i < fft_size; ++i) {
                         if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i], ptr[2*i+1]) * window[i];
                         else in_real[i] = ptr[i] * window[i];

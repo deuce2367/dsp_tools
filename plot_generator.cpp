@@ -134,6 +134,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     std::string time_only_str = time_str.substr(t_pos + 1);
                     draw_text(pixels, full_width, full_height, 5, 10, date_str, axis_color, text_scale);
                     draw_text(pixels, full_width, full_height, 5, 10 + 10 * text_scale, time_only_str, axis_color, text_scale);
+                } else {
+                    draw_text(pixels, full_width, full_height, 5, 10, time_str, axis_color, text_scale);
                 }
             } else {
                 draw_text(pixels, full_width, full_height, 5, 10, "0.00s", axis_color, text_scale);

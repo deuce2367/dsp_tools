@@ -149,20 +149,23 @@ int main(int argc, char** argv) {
         spdlog::info("Processing file: {}", input_file);
         spdlog::stopwatch sw_dsp;
         
-        // WAV Auto-detection
-        bool is_wav = (input_file.size() >= 4 && 
-                      (input_file.substr(input_file.size() - 4) == ".wav" || 
-                       input_file.substr(input_file.size() - 4) == ".WAV"));
-        
+        // File Auto-detection
+        bool is_wav = false;
+        bool is_blue = false;
+        std::string format_str = data_type;
         double file_sr = 1.0;
-        if (is_wav) {
-            int wav_channels = 0;
-            dsp.get_wav_info(input_file, wav_channels, file_sr);
-            format = (wav_channels == 2) ? "complex" : "real";
+        int num_channels = 0;
+        double timecode = 0.0;
+        
+        dsp.get_file_info(input_file, num_channels, file_sr, is_wav, is_blue, format_str, timecode);
+        
+        if (is_wav || is_blue) {
+            format = (num_channels == 2) ? "complex" : "real";
             if (bandwidth == 0.0) {
                 bandwidth = file_sr / 1e6;
             }
         } else {
+            // raw fallback
             if (bandwidth > 0.0) file_sr = bandwidth * 1e6;
         }
         
@@ -172,9 +175,11 @@ int main(int argc, char** argv) {
         DspEngine::StreamConfig config;
         config.filename = input_file;
         config.is_wav = is_wav;
+        config.is_blue = is_blue;
         config.data_type = format == "complex" ? "complex" : data_type;
         config.start_time = start_time;
         config.end_time = end_time;
+        config.original_timecode = timecode;
         config.sample_rate = file_sr;
         config.center_freq = center_freq;
         if (opt_zoom_offset->count() > 0) {
@@ -197,7 +202,7 @@ int main(int argc, char** argv) {
         spdlog::info("====================================");
         spdlog::info("Configuration Summary:");
         spdlog::info("  Input File     : {}", input_file);
-        spdlog::info("  Format         : {} ({})", format, is_wav ? "WAV Native" : data_type);
+        spdlog::info("  Format         : {} ({})", format, is_wav ? "WAV Native" : (is_blue ? "BLUE Native" : format_str));
         spdlog::info("  Center Freq    : {:.3f} MHz", center_freq);
         spdlog::info("  Bandwidth      : {:.3f} MHz", bandwidth);
         spdlog::info("  Time Slice     : {:.2f}s to {}", start_time, end_time > 0 ? std::to_string(end_time) + "s" : "EOF");
@@ -259,8 +264,28 @@ int main(int argc, char** argv) {
             double z_center = result.actual_zoom_center;
             double fs = result.actual_zoom_bw;
             
-            char start_time_buf[32];
-            snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", start_time);
+            char start_time_buf[64];
+            if (timecode > 0.0) {
+                double abs_time = timecode + start_time;
+                // Midas epoch is 1950-01-01. Unix is 1970-01-01.
+                // Difference is 7305 days = 631152000 seconds.
+                time_t unix_time = static_cast<time_t>(abs_time - 631152000.0);
+                struct tm* tm_info = gmtime(&unix_time);
+                if (tm_info) {
+                    int millis = static_cast<int>(std::round((abs_time - std::floor(abs_time)) * 1000.0));
+                    if (millis == 1000) {
+                        millis = 0; // Edge case
+                        // (Technically should add 1 second to unix_time, but this is minor)
+                    }
+                    char time_str[32];
+                    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%S", tm_info);
+                    snprintf(start_time_buf, sizeof(start_time_buf), "%s.%03d", time_str, millis);
+                } else {
+                    snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", abs_time);
+                }
+            } else {
+                snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", start_time);
+            }
             PlotGenerator::generate_fast_waterfall(spectrogram, wfile, width, height, colormap,
                                         final_min_db, final_max_db,
                                         z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title);
