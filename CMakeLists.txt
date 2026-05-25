@@ -3,9 +3,18 @@ project(dsp_plotter)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Suppress warnings from third-party libraries (KFR, spdlog, fmt)
+add_compile_options(-Wno-attributes)
 
 # Suppress deprecation warnings from third-party FetchContent modules globally
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+
+if(POLICY CMP0148)
+    cmake_policy(SET CMP0148 OLD)
+    set(CMAKE_POLICY_DEFAULT_CMP0148 OLD)
+endif()
 
 include(FetchContent)
 
@@ -53,6 +62,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# pybind11
+FetchContent_Declare(
+  pybind11
+  GIT_REPOSITORY https://github.com/pybind/pybind11.git
+  GIT_TAG        v2.11.1
+)
+FetchContent_MakeAvailable(pybind11)
+
 add_executable(dsp_plotter
     main.cpp
     dsp_engine.cpp
@@ -77,3 +94,12 @@ target_link_libraries(dsp_plotter
 
 target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)
 target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
+
+# Python bindings
+pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)
+target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp spdlog::spdlog)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_plotter_py PRIVATE OpenMP::OpenMP_CXX)
+endif()
+target_compile_options(dsp_plotter_py PRIVATE -Wno-stringop-overflow)
+target_include_directories(dsp_plotter_py PRIVATE ${stb_SOURCE_DIR})
