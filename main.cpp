@@ -21,10 +21,12 @@ int main(int argc, char** argv) {
     bool plot_waterfall = false;
     
     std::string output_name = "";
-    std::string out_format = "png";
+    std::string out_format = "jpg";
+    int jpeg_quality = 75;
+    int png_compression = 8;
     std::string data_type = "float32";
     
-    int width = 1024;
+    int width = 512;
     int height = 512;
     size_t fft_size = 2048;
     size_t overlap = 512;
@@ -58,8 +60,15 @@ int main(int argc, char** argv) {
     app.add_flag("--plot-fft", plot_fft, "Generate a 1D FFT plot of the first frame");
     app.add_flag("--plot-waterfall", plot_waterfall, "Generate a 2D PSD Waterfall plot");
 
-    app.add_option("-o,--output", output_name, "Base output filename (default: derived from input)");
-    app.add_option("--out-format", out_format, "Output image format: png or jpg")->check(CLI::IsMember({"png", "jpg", "jpeg"}));
+    app.add_option("-o,--output", output_name, "Base output filename (default: derived from input)");    
+    auto* opt_format = app.add_option("--out-format", out_format, "Output image format: png or jpg (default: jpg)")
+        ->check(CLI::IsMember({"png", "jpg", "jpeg"}));
+    
+    app.add_option("--jpeg-quality", jpeg_quality, "JPEG compression quality from 1 to 100 (default: 75)")
+        ->check(CLI::Range(1, 100));
+
+    app.add_option("--png-compression", png_compression, "PNG compression level from 0 (none) to 9 (max) (default: 8)")
+        ->check(CLI::Range(0, 9));
 
     app.add_option("--width", width, "Output image width");
     app.add_option("--height", height, "Output image height");
@@ -288,7 +297,7 @@ int main(int argc, char** argv) {
             }
             PlotGenerator::generate_fast_waterfall(spectrogram, wfile, width, height, colormap,
                                         final_min_db, final_max_db,
-                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title);
+                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression);
             spdlog::info("Waterfall rendered to {} in {:.5f} seconds", wfile, sw_plot);
         }
         
@@ -297,7 +306,7 @@ int main(int argc, char** argv) {
             std::string ffile = output_name + "_fft." + out_format;
             spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, 256, final_min_db, final_max_db);
             PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, 256,
-                                                  final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title);
+                                                  final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
         }
 

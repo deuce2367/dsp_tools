@@ -13,10 +13,12 @@ public:
                                         double min_db, double max_db,
                                         double center_freq_mhz, double bandwidth_mhz,
                                         const std::string& start_time_iso, double total_duration_sec,
-                                        bool draw_grid, bool draw_labels,
-                                        const std::string& out_format,
+                                        bool draw_grid = true, bool draw_labels = true,
+                                        const std::string& out_format = "png",
                                         int num_x_ticks = 10, int num_y_ticks = 10,
-                                        const std::string& title = "");
+                                        const std::string& title = "",
+                                        int jpeg_quality = 90,
+                                        int png_compression = 8);
 
     // Fast FFT plot rendering
     static void generate_fast_fft_plot(const std::vector<double>& frequency_bins,
@@ -25,8 +27,10 @@ public:
                                        int out_width, int out_height,
                                        double min_db, double max_db,
                                        double center_freq_mhz, double bandwidth_mhz,
-                                       bool draw_grid, bool draw_labels,
-                                       const std::string& out_format,
+                                       bool draw_grid = true, bool draw_labels = true,
+                                       const std::string& out_format = "png",
                                        int num_x_ticks = 10, int num_y_ticks = 10,
-                                       const std::string& title = "");
+                                       const std::string& title = "",
+                                       int jpeg_quality = 90,
+                                       int png_compression = 8);
 };

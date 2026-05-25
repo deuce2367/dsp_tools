@@ -60,10 +60,11 @@ static void draw_text(std::vector<unsigned char>& pixels, int width, int height,
     }
 }
 
-static void save_image(const std::string& filename, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format) {
+static void save_image(const std::string& filename, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int jpeg_quality, int png_compression) {
     if (format == "jpg" || format == "jpeg") {
-        stbi_write_jpg(filename.c_str(), width, height, 3, pixels.data(), 90);
+        stbi_write_jpg(filename.c_str(), width, height, 3, pixels.data(), jpeg_quality);
     } else {
+        stbi_write_png_compression_level = png_compression;
         stbi_write_png(filename.c_str(), width, height, 3, pixels.data(), width * 3);
     }
 }
@@ -221,7 +222,9 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                                             bool draw_grid, bool draw_labels,
                                             const std::string& out_format,
                                             int num_x_ticks, int num_y_ticks,
-                                            const std::string& title) {
+                                            const std::string& title,
+                                            int jpeg_quality,
+                                            int png_compression) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -267,7 +270,7 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
                        true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title);
-    save_image(output_filename, out_width, out_height, pixels, out_format);
+    save_image(output_filename, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
 void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_bins,
@@ -279,7 +282,9 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                                            bool draw_grid, bool draw_labels,
                                            const std::string& out_format,
                                            int num_x_ticks, int num_y_ticks,
-                                           const std::string& title) {
+                                           const std::string& title,
+                                           int jpeg_quality,
+                                           int png_compression) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
 
     // Dark background
@@ -321,5 +326,5 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         prev_y = y;
     }
 
-    save_image(output_filename, out_width, out_height, pixels, out_format);
+    save_image(output_filename, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
