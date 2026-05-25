@@ -25,6 +25,9 @@ int main(int argc, char** argv) {
     int jpeg_quality = 75;
     int png_compression = 8;
     std::string data_type = "float32";
+    std::string fft_color = "50,150,255";
+    std::string fft_fill = "";
+    float fft_fill_opacity = 0.4f;
     
     int width = 512;
     int height = 512;
@@ -69,6 +72,11 @@ int main(int argc, char** argv) {
 
     app.add_option("--png-compression", png_compression, "PNG compression level from 0 (none) to 9 (max) (default: 8)")
         ->check(CLI::Range(0, 9));
+
+    app.add_option("--fft-color", fft_color, "FFT line color name (red, blue) or hex (#ff0000) or RGB (255,0,0) (default: light blue)");
+    app.add_option("--fft-fill", fft_fill, "FFT fill color (defaults to line color)");
+    app.add_option("--fft-fill-opacity", fft_fill_opacity, "FFT fill opacity from 0.0 to 1.0 (default: 0.4)")
+        ->check(CLI::Range(0.0f, 1.0f));
 
     app.add_option("--width", width, "Output image width");
     app.add_option("--height", height, "Output image height");
@@ -304,9 +312,9 @@ int main(int argc, char** argv) {
         if (plot_fft && !first_frame_mag.empty()) {
             spdlog::stopwatch sw_plot;
             std::string ffile = output_name + "_fft." + out_format;
-            spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, 256, final_min_db, final_max_db);
-            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, 256,
-                                                  final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression);
+            spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
+            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height,
+                                                  final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, fft_color, fft_fill, fft_fill_opacity);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
         }
 

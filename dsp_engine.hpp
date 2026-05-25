@@ -58,7 +58,7 @@ public:
         double zoom_center = 0.0; // 0 means same as center_freq
         double zoom_bw = 0.0; // 0 means same as bandwidth
         
-        size_t window_size = 1024;
+        size_t window_size = 0; // 0 means auto
         size_t step_size = 0; // 0 means auto
         size_t output_width = 1024;
         size_t output_height = 512;

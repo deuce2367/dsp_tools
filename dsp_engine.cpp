@@ -256,7 +256,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     // If the required FFT size is insanely large (e.g., > 131072), we clamp it to avoid OOM/slowness
     // and just let the output be lower resolution.
     size_t max_fft_size = 131072;
-    size_t fft_size = std::min<size_t>(base_fft, max_fft_size);
+    size_t fft_size = config.window_size > 0 ? config.window_size : std::min<size_t>(base_fft, max_fft_size);
     
     // Calculate the bin range to extract
     // freq for bin k = (k / fft_size) * file_sample_rate
@@ -308,6 +308,9 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     else if (config.window_type == "flattop") window = kfr::window_flattop(fft_size);
     else if (config.window_type == "bartlett") window = kfr::window_bartlett(fft_size);
     else window = kfr::window_blackman_harris(fft_size);
+    
+    double window_sum = 0.0;
+    for (size_t i = 0; i < fft_size; ++i) window_sum += window[i];
     
     // 6. Waterfall Generation
     size_t step_size = config.step_size;
@@ -419,6 +422,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                     int bin = extract_start_bin + i;
                     if (bin >= 0 && bin < static_cast<int>(fft_size)) {
                         double mag = avg_mag[bin] / valid_averages;
+                        mag /= window_sum; // Normalize by coherent gain
                         if (mag <= 1e-16) mag = 1e-16;
                         result.spectrogram[r][i] = 20.0 * std::log10(mag);
                     }

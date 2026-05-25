@@ -8,6 +8,52 @@
 #include <stb_image_write.h>
 #include "colormap.hpp"
 #include "font8x8_basic.h"
+#include <sstream>
+#include <iomanip>
+
+// Helper to parse color strings
+static RGB parse_color(const std::string& color_str, RGB default_color) {
+    if (color_str.empty()) return default_color;
+    
+    std::string s = color_str;
+    // Lowercase it
+    for (char& c : s) c = std::tolower(c);
+    
+    if (s == "red") return {255, 0, 0};
+    if (s == "green") return {0, 255, 0};
+    if (s == "blue") return {0, 0, 255};
+    if (s == "yellow") return {255, 255, 0};
+    if (s == "cyan") return {0, 255, 255};
+    if (s == "magenta") return {255, 0, 255};
+    if (s == "white") return {255, 255, 255};
+    if (s == "black") return {0, 0, 0};
+    
+    // Hex code (#FF0000 or FF0000)
+    if (s[0] == '#') s = s.substr(1);
+    if (s.length() == 6 && s.find_first_not_of("0123456789abcdef") == std::string::npos) {
+        int r, g, b;
+        std::stringstream ss;
+        ss << std::hex << s.substr(0, 2); ss >> r; ss.clear();
+        ss << std::hex << s.substr(2, 2); ss >> g; ss.clear();
+        ss << std::hex << s.substr(4, 2); ss >> b;
+        return {static_cast<unsigned char>(r), static_cast<unsigned char>(g), static_cast<unsigned char>(b)};
+    }
+    
+    // RGB comma separated (255, 0, 0)
+    std::stringstream ss(s);
+    std::string token;
+    std::vector<int> vals;
+    while (std::getline(ss, token, ',')) {
+        try {
+            vals.push_back(std::stoi(token));
+        } catch(...) {}
+    }
+    if (vals.size() >= 3) {
+        return {static_cast<unsigned char>(vals[0]), static_cast<unsigned char>(vals[1]), static_cast<unsigned char>(vals[2])};
+    }
+    
+    return default_color;
+}
 
 // Helper to set a pixel
 static void set_pixel(std::vector<unsigned char>& pixels, int width, int height, int x, int y, RGB color) {
@@ -16,6 +62,16 @@ static void set_pixel(std::vector<unsigned char>& pixels, int width, int height,
         pixels[idx] = color.r;
         pixels[idx + 1] = color.g;
         pixels[idx + 2] = color.b;
+    }
+}
+
+// Helper to blend a pixel with alpha
+static void blend_pixel(std::vector<unsigned char>& pixels, int width, int height, int x, int y, RGB color, float alpha) {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+        int idx = (y * width + x) * 3;
+        pixels[idx] = static_cast<unsigned char>(pixels[idx] * (1.0f - alpha) + color.r * alpha);
+        pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * (1.0f - alpha) + color.g * alpha);
+        pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * (1.0f - alpha) + color.b * alpha);
     }
 }
 
@@ -284,7 +340,10 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                                            int num_x_ticks, int num_y_ticks,
                                            const std::string& title,
                                            int jpeg_quality,
-                                           int png_compression) {
+                                           int png_compression,
+                                           const std::string& line_color_str,
+                                           const std::string& fill_color_str,
+                                           float fill_opacity) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
 
     // Dark background
@@ -304,7 +363,8 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
                        false, max_db, min_db, num_x_ticks, num_y_ticks, "", title);
 
-    RGB line_color = {50, 150, 255}; // Nice light blue
+    RGB line_color = parse_color(line_color_str, {50, 150, 255});
+    RGB fill_color = fill_color_str.empty() ? line_color : parse_color(fill_color_str, line_color);
 
     int prev_x = -1;
     int prev_y = -1;
@@ -322,6 +382,14 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         if (x > 0) {
             draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
         }
+        
+        // Fill the area under the curve with alpha
+        if (fill_opacity > 0.001f) {
+            for (int fy = y + 1; fy < plot_h; ++fy) {
+                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, fill_opacity);
+            }
+        }
+        
         prev_x = x;
         prev_y = y;
     }

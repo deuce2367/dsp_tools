@@ -4,6 +4,9 @@ project(dsp_plotter)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Suppress deprecation warnings from third-party FetchContent modules globally
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+
 include(FetchContent)
 
 # KFR
@@ -62,4 +65,6 @@ target_link_libraries(dsp_plotter
     CLI11::CLI11
     spdlog::spdlog
 )
+
+target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)
 target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
