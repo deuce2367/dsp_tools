@@ -79,6 +79,17 @@ To smooth out the plot, you can adjust the number of overlapping FFTs that are a
 ./dsp_plotter -i my_recording.wav --averaging 8
 ```
 
+## Acknowledgements & Third-Party Code
+
+This project relies on several fantastic open-source projects and code snippets:
+
+- **KFR** (https://github.com/kfrlib/kfr): A fast, modern C++ DSP framework (dual-licensed, used under GPLv2+).
+- **stb_image_write.h** (https://github.com/nothings/stb): Public domain single-file image writing library by Sean Barrett.
+- **CLI11** (https://github.com/CLIUtils/CLI11): Command line parser for C++11 and beyond (BSD 3-Clause).
+- **spdlog** (https://github.com/gabime/spdlog): Fast C++ logging library (MIT License).
+- **font8x8** (https://github.com/dhepper/font8x8): Basic 8x8 font rendering map by Daniel Hepper (Public Domain/MIT License).
+- **Colormaps**: The scientific colormaps (Viridis, Plasma, Magma, Inferno) were originally developed by Stéfan van der Walt and Nathaniel Smith for [Matplotlib](https://matplotlib.org/stable/tutorials/colors/colormaps.html) (CC0 / Public Domain), and the Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html).
+
 ## Licensing
 
 This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. 
