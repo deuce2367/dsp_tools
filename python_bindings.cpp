@@ -11,6 +11,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     py::class_<DspEngine::StreamConfig>(m, "StreamConfig")
         .def(py::init<>())
         .def_readwrite("filename", &DspEngine::StreamConfig::filename)
+        .def_readwrite("is_wav", &DspEngine::StreamConfig::is_wav)
+        .def_readwrite("is_blue", &DspEngine::StreamConfig::is_blue)
         .def_readwrite("data_type", &DspEngine::StreamConfig::data_type)
         .def_readwrite("sample_rate", &DspEngine::StreamConfig::sample_rate)
         .def_readwrite("center_freq", &DspEngine::StreamConfig::center_freq)
