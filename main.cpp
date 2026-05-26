@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     app.add_option("--height", height, "Output image height");
     auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: auto based on width)");
     auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap");
-    app.add_option("--colormap", colormap, "Colormap (viridis, inferno, plasma, magma, coolwarm, jet, turbo)")->check(CLI::IsMember({"viridis", "inferno", "plasma", "magma", "coolwarm", "jet", "turbo"}));
+    app.add_option("--colormap", colormap, "Colormap (electric, gqrx, websdr, viridis, inferno, plasma, magma, coolwarm, jet, turbo)")->check(CLI::IsMember({"electric", "gqrx", "websdr", "viridis", "inferno", "plasma", "magma", "coolwarm", "jet", "turbo"}));
     
     app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
     app.add_option("--bandwidth", bandwidth, "Original bandwidth in MHz (for axis labels)");
@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
             }
         }
         
-        if (x_ticks <= 0) x_ticks = std::max(1, width / 256);
+        if (x_ticks <= 0) x_ticks = std::max(1, width / 64);
         if (y_ticks <= 0) y_ticks = std::max(1, height / 64);
         
         DspEngine::StreamConfig config;

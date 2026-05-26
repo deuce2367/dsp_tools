@@ -58,16 +58,16 @@ public:
         return colors[num_stops - 1];
     }
 
-    static RGB get_plasma(float value) {
+    static RGB get_electric(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
         const int num_stops = 5;
         float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
         RGB colors[num_stops] = {
-            {13, 8, 135},     // Dark blue
-            {126, 3, 168},    // Purple
-            {204, 71, 120},   // Pink/Red
-            {248, 149, 64},   // Orange
-            {240, 249, 33}    // Yellow
+            {0, 0, 0},        // Black
+            {0, 0, 255},      // Blue
+            {0, 255, 255},    // Cyan
+            {255, 255, 0},    // Yellow
+            {255, 255, 255}   // White
         };
         
         for (int i = 0; i < num_stops - 1; ++i) {
@@ -83,16 +83,43 @@ public:
         return colors[num_stops - 1];
     }
 
-    static RGB get_magma(float value) {
+    static RGB get_gqrx(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 5;
-        float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+        const int num_stops = 6;
+        float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
         RGB colors[num_stops] = {
-            {0, 0, 4},        // Black
-            {81, 18, 124},    // Dark purple
-            {182, 54, 121},   // Magenta
-            {251, 136, 97},   // Coral/Orange
-            {252, 253, 191}   // Light yellow
+            {0, 0, 0},        // Black
+            {0, 0, 150},      // Dark Blue
+            {0, 150, 255},    // Light Blue
+            {255, 255, 0},    // Yellow
+            {255, 0, 0},      // Red
+            {255, 255, 255}   // White
+        };
+        
+        for (int i = 0; i < num_stops - 1; ++i) {
+            if (value >= stops[i] && value <= stops[i+1]) {
+                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
+                RGB c;
+                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
+                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
+                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
+                return c;
+            }
+        }
+        return colors[num_stops - 1];
+    }
+
+    static RGB get_websdr(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        const int num_stops = 6;
+        float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
+        RGB colors[num_stops] = {
+            {0, 0, 0},        // Black
+            {0, 0, 255},      // Blue
+            {0, 255, 0},      // Green
+            {255, 255, 0},    // Yellow
+            {255, 0, 0},      // Red
+            {255, 255, 255}   // White
         };
         
         for (int i = 0; i < num_stops - 1; ++i) {

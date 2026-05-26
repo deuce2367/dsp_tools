@@ -146,11 +146,15 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
     if (draw_grid) {
         for (int i = 1; i < num_x_ticks; ++i) {
             int x = plot_x + plot_w * i / num_x_ticks;
-            draw_line(pixels, full_width, full_height, x, plot_y, x, plot_y + plot_h - 1, grid_color);
+            for (int y = plot_y; y < plot_y + plot_h; ++y) {
+                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.5f);
+            }
         }
         for (int i = 1; i < num_y_ticks; ++i) {
             int y = plot_y + plot_h * i / num_y_ticks;
-            draw_line(pixels, full_width, full_height, plot_x, y, plot_x + plot_w - 1, y, grid_color);
+            for (int x = plot_x; x < plot_x + plot_w; ++x) {
+                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.5f);
+            }
         }
     }
 
@@ -163,6 +167,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             double start_f = center_freq_mhz - bandwidth_mhz / 2.0;
             double step_f = bandwidth_mhz / num_x_ticks;
             
+            int last_label_end_x = -1;
             for (int i = 0; i <= num_x_ticks; ++i) {
                 double f = start_f + step_f * i;
                 std::ostringstream ss;
@@ -171,13 +176,22 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 int x_pos = plot_x + (plot_w * i) / num_x_ticks;
                 int text_width = ss.str().length() * 8 * text_scale;
                 
-                // Adjust x_pos to not go out of bounds
-                if (i == 0) x_pos += 2;
-                else if (i == num_x_ticks) x_pos -= text_width + 2;
-                else x_pos -= text_width / 2;
+                int draw_x_pos = x_pos;
+                if (i == 0) draw_x_pos += 2;
+                else if (i == num_x_ticks) draw_x_pos -= text_width + 2;
+                else draw_x_pos -= text_width / 2;
+                
+                // Prevent overlaps
+                if (i != 0 && i != num_x_ticks) {
+                    if (draw_x_pos < last_label_end_x + 15 * text_scale) continue;
+                    
+                    int final_label_x = plot_x + plot_w - (text_width + 2);
+                    if (draw_x_pos + text_width + 15 * text_scale > final_label_x) continue;
+                }
                 
                 int y_pos = plot_y + plot_h + 10;
-                draw_text(pixels, full_width, full_height, x_pos, y_pos, ss.str(), axis_color, text_scale);
+                draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale);
+                last_label_end_x = draw_x_pos + text_width;
             }
         }
 
@@ -221,17 +235,18 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
         
         // Draw Legend (Colorbar)
         if (!colormap.empty() && plot_w > 0 && plot_h > 0) {
-            int leg_w = 10 * text_scale;
-            int leg_x = plot_x + plot_w + 10;
+            int leg_w = 15 * text_scale;
+            int leg_x = plot_x + plot_w + 10 * text_scale;
             int leg_y = plot_y;
             int leg_h = plot_h;
             
             for (int y = 0; y < leg_h; ++y) {
                 float norm_val = 1.0f - static_cast<float>(y) / leg_h;
                 RGB c;
-                if (colormap == "inferno") c = Colormap::get_inferno(norm_val);
-                else if (colormap == "plasma") c = Colormap::get_plasma(norm_val);
-                else if (colormap == "magma") c = Colormap::get_magma(norm_val);
+                if (colormap == "electric") c = Colormap::get_electric(norm_val);
+                else if (colormap == "gqrx") c = Colormap::get_gqrx(norm_val);
+                else if (colormap == "websdr") c = Colormap::get_websdr(norm_val);
+                else if (colormap == "inferno") c = Colormap::get_inferno(norm_val);
                 else if (colormap == "coolwarm") c = Colormap::get_coolwarm(norm_val);
                 else if (colormap == "turbo") c = Colormap::get_turbo(norm_val);
                 else if (colormap == "jet") c = Colormap::get_jet(norm_val);
@@ -250,9 +265,9 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             ss_mid << std::fixed << std::setprecision(0) << (max_db + min_db) / 2.0;
             ss_min << std::fixed << std::setprecision(0) << min_db;
             
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5, leg_y, ss_max.str(), axis_color, text_scale);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5, leg_y + leg_h / 2 - 4 * text_scale, ss_mid.str(), axis_color, text_scale);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y, ss_max.str(), axis_color, text_scale);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h / 2 - 4 * text_scale, ss_mid.str(), axis_color, text_scale);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale);
             
             // Draw 'dB' at the top of the colorbar
             draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale);
@@ -288,10 +303,11 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     
     std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
     
-    int margin_left = draw_labels ? 60 : 0;
-    int margin_bottom = draw_labels ? 40 : 0;
-    int margin_top = draw_labels ? 30 : 0;
-    int margin_right = draw_labels ? 60 : 0;
+    int text_scale = std::max(1, out_width / 800);
+    int margin_left = draw_labels ? 60 * text_scale : 0;
+    int margin_bottom = draw_labels ? 40 * text_scale : 0;
+    int margin_top = draw_labels ? 30 * text_scale : 0;
+    int margin_right = draw_labels ? (!colormap.empty() ? 70 * text_scale : 60 * text_scale) : 0;
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -311,9 +327,10 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                 float norm_val = static_cast<float>((db_val - min_db) / (max_db - min_db));
                 norm_val = std::clamp(norm_val, 0.0f, 1.0f);
                 
-                if (colormap == "inferno") color = Colormap::get_inferno(norm_val);
-                else if (colormap == "plasma") color = Colormap::get_plasma(norm_val);
-                else if (colormap == "magma") color = Colormap::get_magma(norm_val);
+                if (colormap == "electric") color = Colormap::get_electric(norm_val);
+                else if (colormap == "gqrx") color = Colormap::get_gqrx(norm_val);
+                else if (colormap == "websdr") color = Colormap::get_websdr(norm_val);
+                else if (colormap == "inferno") color = Colormap::get_inferno(norm_val);
                 else if (colormap == "coolwarm") color = Colormap::get_coolwarm(norm_val);
                 else if (colormap == "turbo") color = Colormap::get_turbo(norm_val);
                 else if (colormap == "jet") color = Colormap::get_jet(norm_val);
@@ -347,10 +364,11 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     // Dark background
     std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
     
-    int margin_left = draw_labels ? 60 : 0;
-    int margin_bottom = draw_labels ? 40 : 0;
-    int margin_top = draw_labels ? 30 : 0;
-    int margin_right = draw_labels ? 60 : 0;
+    int text_scale = std::max(1, out_width / 800);
+    int margin_left = draw_labels ? 60 * text_scale : 0;
+    int margin_bottom = draw_labels ? 40 * text_scale : 0;
+    int margin_top = draw_labels ? 30 * text_scale : 0;
+    int margin_right = draw_labels ? 60 * text_scale : 0;
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -364,9 +382,10 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
 
     // Helper to extract a color from the requested colormap
     auto get_cmap_color = [&](float norm) -> RGB {
+        if (colormap_name == "electric") return Colormap::get_electric(norm);
+        if (colormap_name == "gqrx") return Colormap::get_gqrx(norm);
+        if (colormap_name == "websdr") return Colormap::get_websdr(norm);
         if (colormap_name == "inferno") return Colormap::get_inferno(norm);
-        if (colormap_name == "plasma") return Colormap::get_plasma(norm);
-        if (colormap_name == "magma") return Colormap::get_magma(norm);
         if (colormap_name == "coolwarm") return Colormap::get_coolwarm(norm);
         if (colormap_name == "turbo") return Colormap::get_turbo(norm);
         if (colormap_name == "jet") return Colormap::get_jet(norm);
