@@ -97,6 +97,10 @@ target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
 
 # Python bindings
 pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_compile_options(dsp_plotter_py PRIVATE "-flto=auto")
+    target_link_options(dsp_plotter_py PRIVATE "-flto=auto")
+endif()
 target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp spdlog::spdlog)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_plotter_py PRIVATE OpenMP::OpenMP_CXX)
