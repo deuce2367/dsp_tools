@@ -29,7 +29,29 @@ public:
         }
         return colors[num_stops - 1];
     }
-
+    static RGB get_grape(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        const int num_stops = 4;
+        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        RGB colors[num_stops] = {
+            {0, 0, 0},        // Black
+            {50, 0, 100},     // Dark Violet
+            {200, 20, 255},   // Neon Purple
+            {255, 255, 255}   // White
+        };
+        
+        for (int i = 0; i < num_stops - 1; ++i) {
+            if (value >= stops[i] && value <= stops[i+1]) {
+                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
+                RGB c;
+                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
+                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
+                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
+                return c;
+            }
+        }
+        return colors[num_stops - 1];
+    }
 
 
     static RGB get_electric(float value) {

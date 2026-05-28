@@ -368,6 +368,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 else if (colormap == "pablo") c = Colormap::get_pablo(norm_val);
                 else if (colormap == "turbo") c = Colormap::get_turbo(norm_val);
                 else if (colormap == "frog") c = Colormap::get_frog(norm_val);
+                else if (colormap == "grape") c = Colormap::get_grape(norm_val);
                 else if (colormap == "jet") c = Colormap::get_jet(norm_val);
                 else c = Colormap::get_turbo(norm_val);
                 draw_line(pixels, full_width, full_height, leg_x, leg_y + y, leg_x + leg_w, leg_y + y, c);
@@ -464,6 +465,7 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                 else if (colormap == "pablo") color = Colormap::get_pablo(norm_val);
                 else if (colormap == "turbo") color = Colormap::get_turbo(norm_val);
                 else if (colormap == "frog") color = Colormap::get_frog(norm_val);
+                else if (colormap == "grape") color = Colormap::get_grape(norm_val);
                 else if (colormap == "jet") color = Colormap::get_jet(norm_val);
                 else color = Colormap::get_turbo(norm_val);
             }

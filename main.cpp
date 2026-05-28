@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     int height = 512;
     size_t fft_size = 2048;
     size_t overlap = 512;
-    std::string colormap = "jet";
+    std::string colormap = "gqrx";
 
     double center_freq = 0.0;
     double bandwidth = 0.0;
@@ -88,8 +88,8 @@ int main(int argc, char** argv) {
     app.add_option("--height", height, "Output image height");
     auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: auto based on width)");
     auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap");
-    app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: turbo)")
-       ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo"}));
+    app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: gqrx)")
+        ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"}));
     
     app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
     app.add_option("--bandwidth", bandwidth, "Original bandwidth in MHz (for axis labels)");
