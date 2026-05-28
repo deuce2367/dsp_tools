@@ -274,8 +274,11 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         // Map to bin index in shifted FFT
         extract_start_bin = static_cast<int>((start_freq + file_sample_rate / 2.0) / file_sample_rate * fft_size);
     } else {
-        // Real FFT: frequencies from 0 to SR/2
-        double start_freq = zoom_center - config.center_freq * 1e6 - zoom_bw / 2.0;
+        // Real FFT: frequencies from 0 to SR/2.
+        // We map the physical center of the band (SR/4) to config.center_freq.
+        // So 0 Hz maps to config.center_freq - SR/4.
+        double baseband_zero_hz_mapped = config.center_freq * 1e6 - file_sample_rate / 4.0;
+        double start_freq = zoom_center - baseband_zero_hz_mapped - zoom_bw / 2.0;
         if (start_freq < 0) start_freq = 0;
         extract_start_bin = static_cast<int>(start_freq / file_sample_rate * fft_size);
     }
@@ -291,15 +294,17 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     }
     
     // Calculate actual bounds extracted
+    result.actual_zoom_bw = (static_cast<double>(bins_to_extract) / fft_size) * file_sample_rate / 1e6;
+    
     double actual_start_freq = 0.0;
     if (channels == 2) {
         actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * file_sample_rate - file_sample_rate / 2.0;
+        result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0) / 1e6 + config.center_freq;
     } else {
         actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * file_sample_rate;
+        double baseband_zero_hz_mapped = config.center_freq * 1e6 - file_sample_rate / 4.0;
+        result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0 + baseband_zero_hz_mapped) / 1e6;
     }
-    
-    result.actual_zoom_bw = (static_cast<double>(bins_to_extract) / fft_size) * file_sample_rate / 1e6;
-    result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0) / 1e6 + config.center_freq;
     
     // 5. Setup Window
     kfr::univector<double> window(fft_size);

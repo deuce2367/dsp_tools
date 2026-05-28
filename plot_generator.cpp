@@ -3,13 +3,14 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include "embedded_font.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 #include "colormap.hpp"
 #include "font8x8_basic.h"
-#include <sstream>
-#include <iomanip>
 
 // Helper to parse color strings
 static RGB parse_color(const std::string& color_str, RGB default_color) {
@@ -107,12 +108,103 @@ static void draw_char(std::vector<unsigned char>& pixels, int width, int height,
     }
 }
 
-// Draw text string
-static void draw_text(std::vector<unsigned char>& pixels, int width, int height, int x, int y, const std::string& text, RGB color, int scale = 1) {
-    int curr_x = x;
-    for (char c : text) {
-        draw_char(pixels, width, height, curr_x, y, c, color, scale);
-        curr_x += 8 * scale;
+// TrueType Font caching
+struct FontAtlas {
+    bool loaded = false;
+    std::string path = "";
+    int scale = 1;
+    stbtt_bakedchar cdata[96]; // ASCII 32..126
+    std::vector<unsigned char> bitmap;
+    int tex_w = 512;
+    int tex_h = 512;
+    float pixel_height;
+};
+
+static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
+    static FontAtlas atlas;
+    if (atlas.loaded && atlas.path == font_path && atlas.scale == scale) {
+        return atlas;
+    }
+    
+    atlas.loaded = false;
+    atlas.path = font_path;
+    atlas.scale = scale;
+    
+    std::vector<unsigned char> ttf_buffer;
+    if (!font_path.empty()) {
+        FILE* f = fopen(font_path.c_str(), "rb");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            size_t size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            
+            ttf_buffer.resize(size);
+            fread(ttf_buffer.data(), 1, size, f);
+            fclose(f);
+        }
+    }
+    
+    const unsigned char* ttf_data = nullptr;
+    if (!ttf_buffer.empty()) {
+        ttf_data = ttf_buffer.data();
+    } else {
+        ttf_data = DejaVuSansMono_ttf; // Fallback to embedded high-quality font
+    }
+    
+    atlas.pixel_height = 12.0f * scale; // 12px base font size
+    
+    // Scale texture size based on scale
+    atlas.tex_w = 512 * scale;
+    atlas.tex_h = 512 * scale;
+    atlas.bitmap.resize(atlas.tex_w * atlas.tex_h);
+    
+    int ret = stbtt_BakeFontBitmap(ttf_data, 0, atlas.pixel_height, atlas.bitmap.data(), atlas.tex_w, atlas.tex_h, 32, 96, atlas.cdata);
+    if (ret > 0) {
+        atlas.loaded = true;
+    }
+    return atlas;
+}
+
+// Draw a string
+static void draw_text(std::vector<unsigned char>& pixels, int width, int height, int x, int y, const std::string& text, RGB color, int scale = 1, const std::string& font_path = "") {
+    FontAtlas& atlas = get_font_atlas(font_path, scale);
+    
+    if (atlas.loaded) {
+        float xpos = x;
+        float ypos = y + atlas.pixel_height * 0.8f; // Adjust baseline
+        
+        for (char c : text) {
+            if (c >= 32 && c < 128) {
+                stbtt_aligned_quad q;
+                stbtt_GetBakedQuad(atlas.cdata, atlas.tex_w, atlas.tex_h, c - 32, &xpos, &ypos, &q, 1); // 1 = opengl coordinates
+                
+                int q_x0 = static_cast<int>(q.x0);
+                int q_x1 = static_cast<int>(q.x1);
+                int q_y0 = static_cast<int>(q.y0);
+                int q_y1 = static_cast<int>(q.y1);
+                
+                for (int py = q_y0; py < q_y1; ++py) {
+                    for (int px = q_x0; px < q_x1; ++px) {
+                        int src_x = static_cast<int>(q.s0 * atlas.tex_w + (px - q_x0) * (q.s1 - q.s0) * atlas.tex_w / (q_x1 - q_x0));
+                        int src_y = static_cast<int>(q.t0 * atlas.tex_h + (py - q_y0) * (q.t1 - q.t0) * atlas.tex_h / (q_y1 - q_y0));
+                        
+                        if (src_x >= 0 && src_x < atlas.tex_w && src_y >= 0 && src_y < atlas.tex_h) {
+                            unsigned char alpha = atlas.bitmap[src_y * atlas.tex_w + src_x];
+                            if (alpha > 0) {
+                                blend_pixel(pixels, width, height, px, py, color, alpha / 255.0f);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback to font8x8
+        int cx = x;
+        for (char c : text) {
+            draw_char(pixels, width, height, cx, y, c, color, scale);
+            cx += 8 * scale;
+        }
     }
 }
 
@@ -133,7 +225,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                bool is_waterfall, double max_db, double min_db,
                                int num_x_ticks, int num_y_ticks,
                                const std::string& colormap = "",
-                               const std::string& title = "") {
+                               const std::string& title = "",
+                               const std::string& font_path = "") {
     RGB axis_color = {200, 200, 200};
     RGB grid_color = {80, 80, 80};
     
@@ -164,6 +257,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
         
         // X-axis: Frequencies
         if (bandwidth_mhz > 0.0) {
+            if (num_x_ticks % 2 != 0) num_x_ticks++; // Force even so center is a tick
+            
             double start_f = center_freq_mhz - bandwidth_mhz / 2.0;
             double step_f = bandwidth_mhz / num_x_ticks;
             
@@ -174,12 +269,11 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 ss << std::fixed << std::setprecision(2) << f << " MHz";
                 
                 int x_pos = plot_x + (plot_w * i) / num_x_ticks;
-                int text_width = ss.str().length() * 8 * text_scale;
+                int text_width = ss.str().length() * 6 * text_scale;
+                int draw_x_pos = x_pos - text_width / 2;
                 
-                int draw_x_pos = x_pos;
-                if (i == 0) draw_x_pos += 2;
-                else if (i == num_x_ticks) draw_x_pos -= text_width + 2;
-                else draw_x_pos -= text_width / 2;
+                // Draw tick mark extending from grid line (subtle)
+                draw_line(pixels, full_width, full_height, x_pos, plot_y + plot_h, x_pos, plot_y + plot_h + 3 * text_scale, axis_color);
                 
                 // Prevent overlaps
                 if (i != 0 && i != num_x_ticks) {
@@ -189,8 +283,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     if (draw_x_pos + text_width + 15 * text_scale > final_label_x) continue;
                 }
                 
-                int y_pos = plot_y + plot_h + 10;
-                draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale);
+                int y_pos = plot_y + plot_h + 5 * text_scale;
+                draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
                 last_label_end_x = draw_x_pos + text_width;
             }
         }
@@ -203,13 +297,22 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 if (t_pos != std::string::npos) {
                     std::string date_str = time_str.substr(0, t_pos);
                     std::string time_only_str = time_str.substr(t_pos + 1);
-                    draw_text(pixels, full_width, full_height, 5, 10, date_str, axis_color, text_scale);
-                    draw_text(pixels, full_width, full_height, 5, 10 + 10 * text_scale, time_only_str, axis_color, text_scale);
+                    int date_w = date_str.length() * 6 * text_scale;
+                    int time_w = time_only_str.length() * 6 * text_scale;
+                    int date_x = std::max(2 * text_scale, plot_x - date_w - 6 * text_scale);
+                    int time_x = std::max(2 * text_scale, plot_x - time_w - 6 * text_scale);
+                    draw_text(pixels, full_width, full_height, date_x, plot_y - 25 * text_scale, date_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, time_x, plot_y - 14 * text_scale, time_only_str, axis_color, text_scale, font_path);
                 } else {
-                    draw_text(pixels, full_width, full_height, 5, 10, time_str, axis_color, text_scale);
+                    int text_w = time_str.length() * 6 * text_scale;
+                    int text_x = std::max(2 * text_scale, plot_x - text_w - 6 * text_scale);
+                    draw_text(pixels, full_width, full_height, text_x, plot_y - 14 * text_scale, time_str, axis_color, text_scale, font_path);
                 }
             } else {
-                draw_text(pixels, full_width, full_height, 5, 10, "0.00s", axis_color, text_scale);
+                std::string s0 = "0.00s";
+                int text_w = s0.length() * 6 * text_scale;
+                int text_x = std::max(2 * text_scale, plot_x - text_w - 6 * text_scale);
+                draw_text(pixels, full_width, full_height, text_x, plot_y - 14 * text_scale, s0, axis_color, text_scale, font_path);
             }
             
             if (total_duration_sec > 0.0) {
@@ -219,18 +322,30 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     std::ostringstream ss;
                     ss << std::fixed << std::setprecision(2) << "+" << t << "s";
                     
-                    int y_pos = plot_y + (plot_h * i) / num_y_ticks - 4 * text_scale;
+                    int y_pos = plot_y + (plot_h * i) / num_y_ticks;
                     
-                    // Align left
-                    draw_text(pixels, full_width, full_height, 5, y_pos, ss.str(), axis_color, text_scale);
+                    // Draw tick mark (subtle)
+                    draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, y_pos, plot_x, y_pos, axis_color);
+                    
+                    // Align left of axis, center vertically
+                    int text_width = ss.str().length() * 6 * text_scale; // Estimate width
+                    draw_text(pixels, full_width, full_height, plot_x - text_width - 6 * text_scale, y_pos - 6 * text_scale, ss.str(), axis_color, text_scale, font_path);
                 }
             }
         } else {
             std::ostringstream ss_max, ss_min;
             ss_max << std::fixed << std::setprecision(0) << max_db << " dB";
             ss_min << std::fixed << std::setprecision(0) << min_db << " dB";
-            draw_text(pixels, full_width, full_height, 5, plot_y, ss_max.str(), axis_color, text_scale);
-            draw_text(pixels, full_width, full_height, 5, plot_y + plot_h - 10 * text_scale, ss_min.str(), axis_color, text_scale);
+            
+            // Draw tick marks (subtle)
+            draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, plot_y, plot_x, plot_y, axis_color);
+            draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, plot_y + plot_h, plot_x, plot_y + plot_h, axis_color);
+            
+            int text_width_max = ss_max.str().length() * 6 * text_scale;
+            int text_width_min = ss_min.str().length() * 6 * text_scale;
+            
+            draw_text(pixels, full_width, full_height, plot_x - text_width_max - 6 * text_scale, plot_y - 6 * text_scale, ss_max.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, plot_x - text_width_min - 6 * text_scale, plot_y + plot_h - 6 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
         }
         
         // Draw Legend (Colorbar)
@@ -246,11 +361,11 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 if (colormap == "electric") c = Colormap::get_electric(norm_val);
                 else if (colormap == "gqrx") c = Colormap::get_gqrx(norm_val);
                 else if (colormap == "websdr") c = Colormap::get_websdr(norm_val);
-                else if (colormap == "inferno") c = Colormap::get_inferno(norm_val);
-                else if (colormap == "coolwarm") c = Colormap::get_coolwarm(norm_val);
+                else if (colormap == "pablo") c = Colormap::get_pablo(norm_val);
                 else if (colormap == "turbo") c = Colormap::get_turbo(norm_val);
+                else if (colormap == "frog") c = Colormap::get_frog(norm_val);
                 else if (colormap == "jet") c = Colormap::get_jet(norm_val);
-                else c = Colormap::get_viridis(norm_val);
+                else c = Colormap::get_turbo(norm_val);
                 draw_line(pixels, full_width, full_height, leg_x, leg_y + y, leg_x + leg_w, leg_y + y, c);
             }
             
@@ -265,20 +380,28 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             ss_mid << std::fixed << std::setprecision(0) << (max_db + min_db) / 2.0;
             ss_min << std::fixed << std::setprecision(0) << min_db;
             
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y, ss_max.str(), axis_color, text_scale);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h / 2 - 4 * text_scale, ss_mid.str(), axis_color, text_scale);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y, ss_max.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h / 2 - 4 * text_scale, ss_mid.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
             
             // Draw 'dB' at the top of the colorbar
-            draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale);
+            draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale, font_path);
         }
         
         // Draw Title
         if (!title.empty()) {
-            int text_width = title.length() * 8 * text_scale;
+            int title_scale = text_scale + 1; // Make it larger
+            int text_width = title.length() * 6 * title_scale; // Estimate TTF width
+            
+            // If title overruns, scale it down to fit
+            if (text_width > plot_w && title_scale > 1) {
+                title_scale = text_scale;
+                text_width = title.length() * 6 * title_scale;
+            }
+            
             int title_x = plot_x + plot_w / 2 - text_width / 2;
-            int title_y = 10; // Top
-            draw_text(pixels, full_width, full_height, title_x, title_y, title, {255, 255, 255}, text_scale);
+            int title_y = 5 * text_scale; // Top margin
+            draw_text(pixels, full_width, full_height, title_x, title_y, title, {255, 255, 255}, title_scale, font_path);
         }
     }
 }
@@ -295,7 +418,8 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                                             int num_x_ticks, int num_y_ticks,
                                             const std::string& title,
                                             int jpeg_quality,
-                                            int png_compression) {
+                                            int png_compression,
+                                            const std::string& font_path) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -304,7 +428,7 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
     
     int text_scale = std::max(1, out_width / 800);
-    int margin_left = draw_labels ? 60 * text_scale : 0;
+    int margin_left = draw_labels ? 50 * text_scale : 0;
     int margin_bottom = draw_labels ? 40 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;
     int margin_right = draw_labels ? (!colormap.empty() ? 70 * text_scale : 60 * text_scale) : 0;
@@ -330,11 +454,11 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                 if (colormap == "electric") color = Colormap::get_electric(norm_val);
                 else if (colormap == "gqrx") color = Colormap::get_gqrx(norm_val);
                 else if (colormap == "websdr") color = Colormap::get_websdr(norm_val);
-                else if (colormap == "inferno") color = Colormap::get_inferno(norm_val);
-                else if (colormap == "coolwarm") color = Colormap::get_coolwarm(norm_val);
+                else if (colormap == "pablo") color = Colormap::get_pablo(norm_val);
                 else if (colormap == "turbo") color = Colormap::get_turbo(norm_val);
+                else if (colormap == "frog") color = Colormap::get_frog(norm_val);
                 else if (colormap == "jet") color = Colormap::get_jet(norm_val);
-                else color = Colormap::get_viridis(norm_val);
+                else color = Colormap::get_turbo(norm_val);
             }
             set_pixel(pixels, out_width, out_height, plot_x + x, plot_y + y, color);
         }
@@ -342,7 +466,7 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
-                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title);
+                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path);
     save_image(output_filename, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
@@ -358,14 +482,15 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                                            const std::string& title,
                                            int jpeg_quality,
                                            int png_compression,
-                                           const std::string& colormap_name) {
+                                           const std::string& colormap_name,
+                                           const std::string& font_path) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
 
     // Dark background
     std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
     
     int text_scale = std::max(1, out_width / 800);
-    int margin_left = draw_labels ? 60 * text_scale : 0;
+    int margin_left = draw_labels ? 50 * text_scale : 0;
     int margin_bottom = draw_labels ? 40 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;
     int margin_right = draw_labels ? 60 * text_scale : 0;
@@ -378,18 +503,18 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     // Use empty string for start_time_iso to avoid printing date/time on FFT
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
-                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title);
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path);
 
     // Helper to extract a color from the requested colormap
     auto get_cmap_color = [&](float norm) -> RGB {
         if (colormap_name == "electric") return Colormap::get_electric(norm);
         if (colormap_name == "gqrx") return Colormap::get_gqrx(norm);
         if (colormap_name == "websdr") return Colormap::get_websdr(norm);
-        if (colormap_name == "inferno") return Colormap::get_inferno(norm);
-        if (colormap_name == "coolwarm") return Colormap::get_coolwarm(norm);
+        if (colormap_name == "pablo") return Colormap::get_pablo(norm);
         if (colormap_name == "turbo") return Colormap::get_turbo(norm);
+        if (colormap_name == "frog") return Colormap::get_frog(norm);
         if (colormap_name == "jet") return Colormap::get_jet(norm);
-        return Colormap::get_viridis(norm); // default
+        return Colormap::get_turbo(norm); // default
     };
 
     RGB line_color = get_cmap_color(0.6f); // Use a prominent color from the upper-middle of the colormap

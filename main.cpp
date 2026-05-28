@@ -46,6 +46,8 @@ int main(int argc, char** argv) {
     bool draw_grid = true;
     bool draw_labels = true;
     
+    std::string font_path = "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf";
+    
     double min_db = 1.0; // 1.0 indicates auto-level
     double max_db = 1.0; // 1.0 indicates auto-level
     
@@ -80,7 +82,8 @@ int main(int argc, char** argv) {
     app.add_option("--height", height, "Output image height");
     auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: auto based on width)");
     auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap");
-    app.add_option("--colormap", colormap, "Colormap (electric, gqrx, websdr, viridis, inferno, plasma, magma, coolwarm, jet, turbo)")->check(CLI::IsMember({"electric", "gqrx", "websdr", "viridis", "inferno", "plasma", "magma", "coolwarm", "jet", "turbo"}));
+    app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: turbo)")
+       ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo"}));
     
     app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
     app.add_option("--bandwidth", bandwidth, "Original bandwidth in MHz (for axis labels)");
@@ -95,6 +98,7 @@ int main(int argc, char** argv) {
     
     app.add_flag("--draw-grid", draw_grid, "Draw grid overlay on plots");
     app.add_flag("--draw-labels", draw_labels, "Draw axis labels on plots");
+    app.add_option("--font", font_path, "Path to TTF font file for scalable text (default: /usr/share/fonts/truetype/noto/NotoMono-Regular.ttf)");
     app.add_option("--min-db", min_db, "Minimum dB level for plotting (default: auto)");
     app.add_option("--max-db", max_db, "Maximum dB level for plotting (default: auto)");
     app.add_option("--x-ticks", x_ticks, "Number of grid ticks on the X axis");
@@ -229,7 +233,7 @@ int main(int argc, char** argv) {
             }
         }
         
-        if (x_ticks <= 0) x_ticks = std::max(1, width / 64);
+        if (x_ticks <= 0) x_ticks = std::max(1, width / 128);
         if (y_ticks <= 0) y_ticks = std::max(1, height / 64);
         
         DspEngine::StreamConfig config;
@@ -348,7 +352,7 @@ int main(int argc, char** argv) {
             }
             PlotGenerator::generate_fast_waterfall(spectrogram, wfile, width, height, colormap,
                                         final_min_db, final_max_db,
-                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression);
+                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, font_path);
             spdlog::info("Waterfall rendered to {} in {:.5f} seconds", wfile, sw_plot);
         }
         
@@ -356,7 +360,7 @@ int main(int argc, char** argv) {
             spdlog::stopwatch sw_plot;
             std::string ffile = output_name + "_fft." + out_format;
             spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
-            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, colormap);
+            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, colormap, font_path);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
         }
 

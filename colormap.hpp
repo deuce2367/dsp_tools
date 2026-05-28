@@ -6,18 +6,15 @@ struct RGB { unsigned char r, g, b; };
 
 class Colormap {
 public:
-    static RGB get_viridis(float value) {
-        // Clamp value between 0.0 and 1.0
+    static RGB get_frog(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        
-        // Simple interpolation approximating Viridis
         const int num_stops = 4;
-        float stops[num_stops] = {0.0f, 0.33f, 0.66f, 1.0f};
+        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
         RGB colors[num_stops] = {
-            {68, 1, 84},      // Dark purple
-            {49, 104, 142},   // Blue
-            {53, 183, 121},   // Green
-            {253, 231, 37}    // Yellow
+            {0, 0, 0},        // Black
+            {0, 128, 0},      // Dark Green
+            {0, 255, 0},      // Green
+            {255, 255, 255}   // White
         };
         
         for (int i = 0; i < num_stops - 1; ++i) {
@@ -33,40 +30,16 @@ public:
         return colors[num_stops - 1];
     }
 
-    static RGB get_inferno(float value) {
-        value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 5;
-        float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
-        RGB colors[num_stops] = {
-            {0, 0, 4},        // Black/Dark Blue
-            {66, 10, 104},    // Purple
-            {165, 44, 96},    // Magenta/Red
-            {248, 149, 64},   // Orange
-            {252, 255, 164}   // Yellow/White
-        };
-        
-        for (int i = 0; i < num_stops - 1; ++i) {
-            if (value >= stops[i] && value <= stops[i+1]) {
-                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
-                RGB c;
-                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
-                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
-                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
-                return c;
-            }
-        }
-        return colors[num_stops - 1];
-    }
+
 
     static RGB get_electric(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 5;
-        float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+        const int num_stops = 4;
+        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
         RGB colors[num_stops] = {
             {0, 0, 0},        // Black
             {0, 0, 255},      // Blue
             {0, 255, 255},    // Cyan
-            {255, 255, 0},    // Yellow
             {255, 255, 255}   // White
         };
         
@@ -109,7 +82,7 @@ public:
         return colors[num_stops - 1];
     }
 
-    static RGB get_websdr(float value) {
+    static RGB get_pablo(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
         const int num_stops = 6;
         float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
@@ -135,18 +108,16 @@ public:
         return colors[num_stops - 1];
     }
 
-    static RGB get_coolwarm(float value) {
+    static RGB get_websdr(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 7;
-        float stops[num_stops] = {0.0f, 0.1666666f, 0.3333333f, 0.5f, 0.6666666f, 0.8333333f, 1.0f};
+        const int num_stops = 5;
+        float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
         RGB colors[num_stops] = {
-            {58, 76, 192},
-            {111, 145, 242},
-            {170, 198, 253},
-            {221, 220, 219},
-            {246, 183, 156},
-            {230, 116, 90},
-            {179, 3, 38}
+            {0, 0, 0},        // Black
+            {80, 0, 150},     // Purple
+            {255, 0, 0},      // Red
+            {255, 255, 0},    // Yellow
+            {255, 255, 255}   // White
         };
         
         for (int i = 0; i < num_stops - 1; ++i) {
@@ -161,6 +132,8 @@ public:
         }
         return colors[num_stops - 1];
     }
+
+
 
     static RGB get_turbo(float value) {
         value = std::max(0.0f, std::min(1.0f, value));

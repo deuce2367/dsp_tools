@@ -56,11 +56,11 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("colormap"), py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
             py::arg("start_time_iso"), py::arg("total_duration_sec"), py::arg("draw_grid") = true, py::arg("draw_labels") = true,
             py::arg("out_format") = "png", py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
-            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8)
+            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("font_path") = "")
         .def_static("generate_fast_fft_plot", &PlotGenerator::generate_fast_fft_plot,
             py::arg("frequency_bins"), py::arg("magnitude_db"), py::arg("output_filename"), py::arg("out_width"), py::arg("out_height"),
             py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
             py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
             py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
-            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet");
+            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet", py::arg("font_path") = "");
 }

@@ -18,7 +18,8 @@ public:
                                         int num_x_ticks = 10, int num_y_ticks = 10,
                                         const std::string& title = "",
                                         int jpeg_quality = 90,
-                                        int png_compression = 8);
+                                        int png_compression = 8,
+                                        const std::string& font_path = "");
 
     // Fast FFT plot rendering
     static void generate_fast_fft_plot(const std::vector<double>& frequency_bins,
@@ -33,5 +34,6 @@ public:
                                        const std::string& title = "",
                                        int jpeg_quality = 90,
                                        int png_compression = 8,
-                                       const std::string& colormap_name = "jet");
+                                       const std::string& colormap_name = "jet",
+                                       const std::string& font_path = "");
 };

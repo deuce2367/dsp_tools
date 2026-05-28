@@ -117,7 +117,7 @@ def main():
         output_filename=waterfall_filename,
         out_width=out_width,
         out_height=out_height,
-        colormap="turbo",                     # Valid options: turbo, magma, inferno, plasma, viridis, jet, etc.
+        colormap="turbo",                     # Valid options: turbo, jet, frog, electric, pablo, websdr, etc.
         min_db=min_db,
         max_db=max_db,
         center_freq_mhz=center_freq_mhz,

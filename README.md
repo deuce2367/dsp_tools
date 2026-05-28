@@ -79,18 +79,28 @@ To smooth out the plot, you can adjust the number of overlapping FFTs that are a
 ./dsp_plotter -i my_recording.wav --averaging 8
 ```
 
+### Changing Fonts and Appearance
+
+The plotter is 100% self-contained and bundles a high-quality embedded TrueType font (DejaVu Sans Mono) directly into the executable. This guarantees mathematically perfect, scalable axis labels on any system or OS without relying on external system fonts!
+
+However, you can still override the font choice by specifying a custom `.ttf` file:
+```bash
+./dsp_plotter -i my_recording.wav --font /path/to/custom_font.ttf
+```
+
 ## Acknowledgements & Third-Party Code
 
 This project relies on several fantastic open-source projects and code snippets:
 
 - **KFR** (https://github.com/kfrlib/kfr): A fast, modern C++ DSP framework (dual-licensed, used under GPLv2+).
-- **stb_image_write.h** (https://github.com/nothings/stb): Public domain single-file image writing library by Sean Barrett (used for rapid PNG/JPEG encoding of our custom from-scratch plotting algorithms).
+- **stb_image_write.h** & **stb_truetype.h** (https://github.com/nothings/stb): Public domain single-file libraries by Sean Barrett used for rapid PNG/JPEG encoding and TrueType vector font rasterization.
 - **CLI11** (https://github.com/CLIUtils/CLI11): Command line parser for C++11 and beyond (BSD 3-Clause).
 - **spdlog** (https://github.com/gabime/spdlog): Fast C++ logging library (MIT License).
 - **nlohmann_json** (https://github.com/nlohmann/json): JSON for Modern C++ (MIT License).
+- **DejaVu Sans Mono**: The embedded default font used for high-quality axis labels (Bitstream Vera License).
 - **pybind11** (https://github.com/pybind/pybind11): Seamless operability between C++11 and Python (BSD 3-Clause).
 - **font8x8** (https://github.com/dhepper/font8x8): Basic 8x8 font rendering map by Daniel Hepper (Public Domain/MIT License).
-- **Colormaps**: The scientific colormaps (Viridis, Inferno, Coolwarm) were originally developed for [Matplotlib](https://matplotlib.org/stable/tutorials/colors/colormaps.html) (CC0 / Public Domain). The Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html). The SDR-specific colormaps (Electric, GQRX, WebSDR) were approximated from popular open-source SDR software (SDR++, GQRX, and WebSDR).
+- **Colormaps**: The Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html). The SDR-specific colormaps (Electric, GQRX, WebSDR, Pablo, Frog) were approximated from popular open-source SDR software.
 
 ## Licensing
 
