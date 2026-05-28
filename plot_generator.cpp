@@ -325,20 +325,20 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     std::string time_only_str = time_str.substr(t_pos + 1);
                     int date_w = get_text_width(date_str, text_scale, font_path);
                     int time_w = get_text_width(time_only_str, text_scale, font_path);
-                    int date_x = std::max(2 * text_scale, plot_x - date_w - 3 * text_scale);
                     int time_x = std::max(2 * text_scale, plot_x - time_w - 3 * text_scale);
-                    draw_text(pixels, full_width, full_height, date_x, plot_y - 20 * text_scale, date_str, axis_color, text_scale, font_path);
-                    draw_text(pixels, full_width, full_height, time_x, plot_y - 10 * text_scale, time_only_str, axis_color, text_scale, font_path);
+                    int date_x = time_x + (time_w / 2) - (date_w / 2);
+                    draw_text(pixels, full_width, full_height, date_x, plot_y - 24 * text_scale, date_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, time_x, plot_y - 12 * text_scale, time_only_str, axis_color, text_scale, font_path);
                 } else {
                     int text_w = get_text_width(time_str, text_scale, font_path);
                     int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
-                    draw_text(pixels, full_width, full_height, text_x, plot_y - 10 * text_scale, time_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, text_x, plot_y - 12 * text_scale, time_str, axis_color, text_scale, font_path);
                 }
             } else {
                 std::string s0 = "0.00s";
                 int text_w = get_text_width(s0, text_scale, font_path);
                 int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
-                draw_text(pixels, full_width, full_height, text_x, plot_y - 10 * text_scale, s0, axis_color, text_scale, font_path);
+                draw_text(pixels, full_width, full_height, text_x, plot_y - 12 * text_scale, s0, axis_color, text_scale, font_path);
             }
             
             if (total_duration_sec > 0.0) {
@@ -427,7 +427,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             }
             
             int title_x = plot_x + plot_w / 2 - text_width / 2;
-            int title_y = 5 * text_scale; // Top margin
+            int title_y = (plot_y - 12 * title_scale) / 2; // Vertically center in top margin
             draw_text(pixels, full_width, full_height, title_x, title_y, title, {255, 255, 255}, title_scale, font_path);
         }
     }
