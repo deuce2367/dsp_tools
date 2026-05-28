@@ -10,7 +10,6 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 #include "colormap.hpp"
-#include "font8x8_basic.h"
 
 // Helper to parse color strings
 static RGB parse_color(const std::string& color_str, RGB default_color) {
@@ -91,22 +90,6 @@ static void draw_line(std::vector<unsigned char>& pixels, int width, int height,
     }
 }
 
-// Draw a single character using font8x8
-static void draw_char(std::vector<unsigned char>& pixels, int width, int height, int x, int y, char c, RGB color, int scale = 1) {
-    if (c < 0 || c > 127) return;
-    unsigned char* bitmap = font8x8_basic[static_cast<int>(c)];
-    for (int r = 0; r < 8; ++r) {
-        for (int c_bit = 0; c_bit < 8; ++c_bit) {
-            if (bitmap[r] & (1 << c_bit)) {
-                for (int sy = 0; sy < scale; ++sy) {
-                    for (int sx = 0; sx < scale; ++sx) {
-                        set_pixel(pixels, width, height, x + c_bit * scale + sx, y + r * scale + sy, color);
-                    }
-                }
-            }
-        }
-    }
-}
 
 // TrueType Font caching
 struct FontAtlas {
@@ -214,13 +197,6 @@ static void draw_text(std::vector<unsigned char>& pixels, int width, int height,
                     }
                 }
             }
-        }
-    } else {
-        // Fallback to font8x8
-        int cx = x;
-        for (char c : text) {
-            draw_char(pixels, width, height, cx, y, c, color, scale);
-            cx += 8 * scale;
         }
     }
 }
