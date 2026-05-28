@@ -250,7 +250,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     double new_sample_rate = file_sample_rate;
     
     // Determine if we can channelize (zoom)
-    if (channels == 2 && config.zoom_bw > 0.0) {
+    if (config.zoom_bw > 0.0) {
         // Find integer decimation factor, leaving 30% margin for anti-alias filter rolloff
         decimation_factor = static_cast<int>(file_sample_rate / (config.zoom_bw * 1e6 * 1.3));
         if (decimation_factor < 1) decimation_factor = 1;
@@ -258,7 +258,12 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         
         if (decimation_factor > 1) {
             new_sample_rate = file_sample_rate / decimation_factor;
-            f_shift = (config.zoom_center - config.center_freq) * 1e6;
+            if (channels == 2) {
+                f_shift = (config.zoom_center - config.center_freq) * 1e6;
+            } else {
+                double baseband_zero_hz_mapped = config.center_freq * 1e6 - file_sample_rate / 4.0;
+                f_shift = config.zoom_center * 1e6 - baseband_zero_hz_mapped;
+            }
             zoom_center = 0.0; // The signal is shifted to baseband
         }
     }
@@ -280,7 +285,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     
     int extract_start_bin = 0;
     
-    if (channels == 2) {
+    if (channels == 2 || decimation_factor > 1) {
         // Complex FFT: frequencies from -SR/2 to SR/2
         // We shift the output so it's linear from -SR/2 to SR/2.
         // We want to extract around `zoom_center` within `zoom_bw`.
@@ -316,7 +321,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     result.actual_zoom_bw = (static_cast<double>(bins_to_extract) / fft_size) * new_sample_rate / 1e6;
     
     double actual_start_freq = 0.0;
-    if (channels == 2) {
+    if (channels == 2 || decimation_factor > 1) {
         actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * new_sample_rate - new_sample_rate / 2.0;
         result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0) / 1e6 + (decimation_factor > 1 ? config.zoom_center : config.center_freq);
     } else {
@@ -366,10 +371,10 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         kfr::dft_plan<double>* plan_complex = nullptr;
         kfr::dft_plan_real<double>* plan_real = nullptr;
         
-        if (channels == 2) plan_complex = new kfr::dft_plan<double>(fft_size);
+        if (channels == 2 || decimation_factor > 1) plan_complex = new kfr::dft_plan<double>(fft_size);
         else plan_real = new kfr::dft_plan_real<double>(fft_size);
         
-        std::vector<kfr::u8> temp_buffer(channels == 2 ? plan_complex->temp_size : plan_real->temp_size);
+        std::vector<kfr::u8> temp_buffer((channels == 2 || decimation_factor > 1) ? plan_complex->temp_size : plan_real->temp_size);
         size_t in_size_needed = fft_size * decimation_factor;
         int num_taps = 64;
         if (decimation_factor > 1) in_size_needed += num_taps;
@@ -479,7 +484,7 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                 }
                 
                 // Execute FFT
-                if (channels == 2) {
+                if (channels == 2 || decimation_factor > 1) {
                     plan_complex->execute(out_complex, in_complex, temp_buffer.data());
                     // Shift so 0Hz is center
                     for (size_t i = 0; i < fft_size / 2; ++i) {

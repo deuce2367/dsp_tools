@@ -9,9 +9,10 @@ A high-performance C++ tool for generating FFT spectrum and waterfall image plot
 - **Blazing Fast**: Uses KFR for vectorized FFT operations and STB for rapid PNG and JPG encoding.
 - **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
-- **Dynamic Zooming**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution.
+- **Dynamic Zooming & Channelization**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution. The engine automatically mixes, FIR-filters, and decimates wideband streams on the fly to conserve memory and massively speed up processing!
 - **Multiple Windowing Functions**: Hann, Hamming, Blackman-Harris (default), Flattop, and Bartlett.
 - **Time/Frequency Slicing**: Process only a specific time duration instead of the entire file.
+- **Highlight Overlay**: Draw semi-transparent bounding boxes directly onto the generated plots to highlight specific signals.
 
 ## Build Instructions
 
@@ -66,6 +67,14 @@ Alternatively, if you prefer to use relative offsets (e.g. +0.8 MHz from the cen
 ./dsp_plotter -i sdrplay_105.1MHz.wav --center-freq 105.1 --zoom-offset 0.8 --zoom-bw 0.4
 ```
 
+### Annotating Plots
+
+You can draw a colored, semi-transparent highlight box over specific signals by providing the box's start time, duration, center frequency, and bandwidth. 
+
+```bash
+./dsp_plotter -i my_recording.wav --box-start-time 1.5 --box-duration 2.0 --box-center-freq 105.9 --box-bw 0.2 --box-color red
+```
+
 ### Changing Resolution and Quality
 
 You can adjust the output PNG dimensions. The tool will automatically calculate the best FFT size needed to map your requested frequency bandwidth directly to your chosen pixel width!
@@ -99,7 +108,6 @@ This project relies on several fantastic open-source projects and code snippets:
 - **nlohmann_json** (https://github.com/nlohmann/json): JSON for Modern C++ (MIT License).
 - **DejaVu Sans Mono**: The embedded default font used for high-quality axis labels (Bitstream Vera License).
 - **pybind11** (https://github.com/pybind/pybind11): Seamless operability between C++11 and Python (BSD 3-Clause).
-- **font8x8** (https://github.com/dhepper/font8x8): Basic 8x8 font rendering map by Daniel Hepper (Public Domain/MIT License).
 - **Colormaps**: The Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html). Other colormaps (including Electric, GQRX, WebSDR) were derived from popular open-source SDR software.
 
 ## Licensing
