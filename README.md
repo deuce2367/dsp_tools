@@ -7,7 +7,7 @@ A high-performance C++ tool for generating FFT spectrum and waterfall plots from
 ## Features
 
 - **Blazing Fast**: Uses KFR for vectorized FFT operations and STB for rapid PNG encoding.
-- **Low Memory Footprint**: Reads gigabytes of WAV data instantly using memory mapping (`mmap()`).
+- **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
 - **Dynamic Zooming**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution.
 - **Multiple Windowing Functions**: Hann, Hamming, Blackman-Harris (default), Flattop, and Bartlett.
@@ -100,7 +100,7 @@ This project relies on several fantastic open-source projects and code snippets:
 - **DejaVu Sans Mono**: The embedded default font used for high-quality axis labels (Bitstream Vera License).
 - **pybind11** (https://github.com/pybind/pybind11): Seamless operability between C++11 and Python (BSD 3-Clause).
 - **font8x8** (https://github.com/dhepper/font8x8): Basic 8x8 font rendering map by Daniel Hepper (Public Domain/MIT License).
-- **Colormaps**: The Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html). The SDR-specific colormaps (Electric, GQRX, WebSDR, Pablo, Frog) were approximated from popular open-source SDR software.
+- **Colormaps**: The Turbo colormap was developed by Anton Mikhailov at [Google AI](https://blog.research.google/2019/08/turbo-improved-rainbow-colormap-for.html). Other colormaps (including Electric, GQRX, WebSDR) were derived from popular open-source SDR software.
 
 ## Licensing
 
