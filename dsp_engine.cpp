@@ -245,10 +245,25 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     // Constrain zoom_bw
     if (zoom_bw > file_bw) zoom_bw = file_bw;
     
-    // Required FFT size to get config.output_width bins across zoom_bw
-    // bins_across_zoom = (zoom_bw / file_sample_rate) * fft_size
-    // So fft_size = bins_across_zoom * file_sample_rate / zoom_bw
-    double required_fft_size_d = static_cast<double>(config.output_width) * file_sample_rate / zoom_bw;
+    int decimation_factor = 1;
+    double f_shift = 0.0;
+    double new_sample_rate = file_sample_rate;
+    
+    // Determine if we can channelize (zoom)
+    if (channels == 2 && config.zoom_bw > 0.0) {
+        // Find integer decimation factor, leaving 30% margin for anti-alias filter rolloff
+        decimation_factor = static_cast<int>(file_sample_rate / (config.zoom_bw * 1e6 * 1.3));
+        if (decimation_factor < 1) decimation_factor = 1;
+        if (decimation_factor > 1000) decimation_factor = 1000;
+        
+        if (decimation_factor > 1) {
+            new_sample_rate = file_sample_rate / decimation_factor;
+            f_shift = (config.zoom_center - config.center_freq) * 1e6;
+            zoom_center = 0.0; // The signal is shifted to baseband
+        }
+    }
+    
+    double required_fft_size_d = static_cast<double>(config.output_width) * new_sample_rate / zoom_bw;
     
     // We want the next power of two
     size_t base_fft = std::max<size_t>(1024, kfr::next_poweroftwo(static_cast<size_t>(required_fft_size_d)));
@@ -269,22 +284,26 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         // Complex FFT: frequencies from -SR/2 to SR/2
         // We shift the output so it's linear from -SR/2 to SR/2.
         // We want to extract around `zoom_center` within `zoom_bw`.
-        double start_freq = zoom_center - config.center_freq * 1e6 - zoom_bw / 2.0;
+        double start_freq = zoom_center - zoom_bw / 2.0;
+        
+        if (decimation_factor == 1) {
+            start_freq = zoom_center - config.center_freq * 1e6 - zoom_bw / 2.0;
+        }
         
         // Map to bin index in shifted FFT
-        extract_start_bin = static_cast<int>((start_freq + file_sample_rate / 2.0) / file_sample_rate * fft_size);
+        extract_start_bin = static_cast<int>((start_freq + new_sample_rate / 2.0) / new_sample_rate * fft_size);
     } else {
         // Real FFT: frequencies from 0 to SR/2.
         // We map the physical center of the band (SR/4) to config.center_freq.
         // So 0 Hz maps to config.center_freq - SR/4.
-        double baseband_zero_hz_mapped = config.center_freq * 1e6 - file_sample_rate / 4.0;
+        double baseband_zero_hz_mapped = config.center_freq * 1e6 - new_sample_rate / 4.0;
         double start_freq = zoom_center - baseband_zero_hz_mapped - zoom_bw / 2.0;
         if (start_freq < 0) start_freq = 0;
-        extract_start_bin = static_cast<int>(start_freq / file_sample_rate * fft_size);
+        extract_start_bin = static_cast<int>(start_freq / new_sample_rate * fft_size);
     }
     
     if (extract_start_bin < 0) extract_start_bin = 0;
-    int bins_to_extract = static_cast<int>(zoom_bw / file_sample_rate * fft_size);
+    int bins_to_extract = static_cast<int>(zoom_bw / new_sample_rate * fft_size);
     if (bins_to_extract <= 0) bins_to_extract = 1;
     
     int max_bin = static_cast<int>(fft_size - bins_to_extract);
@@ -294,15 +313,15 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
     }
     
     // Calculate actual bounds extracted
-    result.actual_zoom_bw = (static_cast<double>(bins_to_extract) / fft_size) * file_sample_rate / 1e6;
+    result.actual_zoom_bw = (static_cast<double>(bins_to_extract) / fft_size) * new_sample_rate / 1e6;
     
     double actual_start_freq = 0.0;
     if (channels == 2) {
-        actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * file_sample_rate - file_sample_rate / 2.0;
-        result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0) / 1e6 + config.center_freq;
+        actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * new_sample_rate - new_sample_rate / 2.0;
+        result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0) / 1e6 + (decimation_factor > 1 ? config.zoom_center : config.center_freq);
     } else {
-        actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * file_sample_rate;
-        double baseband_zero_hz_mapped = config.center_freq * 1e6 - file_sample_rate / 4.0;
+        actual_start_freq = (static_cast<double>(extract_start_bin) / fft_size) * new_sample_rate;
+        double baseband_zero_hz_mapped = config.center_freq * 1e6 - new_sample_rate / 4.0;
         result.actual_zoom_center = (actual_start_freq + (result.actual_zoom_bw * 1e6) / 2.0 + baseband_zero_hz_mapped) / 1e6;
     }
     
@@ -351,9 +370,31 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
         else plan_real = new kfr::dft_plan_real<double>(fft_size);
         
         std::vector<kfr::u8> temp_buffer(channels == 2 ? plan_complex->temp_size : plan_real->temp_size);
-        kfr::univector<double> in_real(fft_size);
+        size_t in_size_needed = fft_size * decimation_factor;
+        int num_taps = 64;
+        if (decimation_factor > 1) in_size_needed += num_taps;
+        
         kfr::univector<kfr::complex<double>> in_complex(fft_size);
+        kfr::univector<double> in_real(fft_size);
         kfr::univector<kfr::complex<double>> out_complex(fft_size);
+        
+        // FIR filter taps
+        std::vector<double> taps(num_taps);
+        if (decimation_factor > 1) {
+            double fc = 0.45 / decimation_factor;
+            for (int i = 0; i < num_taps; ++i) {
+                double n = i - (num_taps - 1) / 2.0;
+                if (n == 0) taps[i] = 2.0 * fc;
+                else taps[i] = sin(2.0 * M_PI * fc * n) / (M_PI * n);
+                taps[i] *= 0.42 - 0.5 * cos(2.0 * M_PI * i / (num_taps - 1)) + 0.08 * cos(4.0 * M_PI * i / (num_taps - 1));
+            }
+            double sum = 0;
+            for (double t : taps) sum += t;
+            for (double& t : taps) t /= sum;
+        }
+        
+        std::vector<kfr::complex<double>> raw_samples;
+        if (decimation_factor > 1) raw_samples.resize(in_size_needed);
         
         #pragma omp for schedule(dynamic)
         for (size_t r = 0; r < num_rows; ++r) {
@@ -373,37 +414,67 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
                 size_t byte_offset = data_offset + a_start * channels * (bits_per_sample / 8);
                 
                 // Read & Convert
-                if (bits_per_sample == 8) {
-                    if (config.is_wav) {
-                        const uint8_t* ptr = mmap_file.ptr + byte_offset;
-                        for (size_t i = 0; i < fft_size; ++i) {
-                            if (channels == 2) in_complex[i] = kfr::complex<double>((ptr[2*i] - 127.5)/128.0, (ptr[2*i+1] - 127.5)/128.0) * window[i];
-                            else in_real[i] = ((ptr[i] - 127.5)/128.0) * window[i];
+                auto read_sample = [&](size_t idx, double& r, double& i) {
+                    size_t boffset = data_offset + (a_start + idx) * channels * (bits_per_sample / 8);
+                    if (bits_per_sample == 8) {
+                        if (config.is_wav) {
+                            const uint8_t* ptr = mmap_file.ptr + boffset;
+                            r = (ptr[0] - 127.5)/128.0; if (channels == 2) i = (ptr[1] - 127.5)/128.0;
+                        } else {
+                            const int8_t* ptr = reinterpret_cast<const int8_t*>(mmap_file.ptr + boffset);
+                            r = ptr[0]/128.0; if (channels == 2) i = ptr[1]/128.0;
                         }
-                    } else {
-                        const int8_t* ptr = reinterpret_cast<const int8_t*>(mmap_file.ptr + byte_offset);
-                        for (size_t i = 0; i < fft_size; ++i) {
-                            if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i]/128.0, ptr[2*i+1]/128.0) * window[i];
-                            else in_real[i] = (ptr[i]/128.0) * window[i];
+                    } else if (bits_per_sample == 16) {
+                        const int16_t* ptr = reinterpret_cast<const int16_t*>(mmap_file.ptr + boffset);
+                        r = ptr[0]/32768.0; if (channels == 2) i = ptr[1]/32768.0;
+                    } else if (bits_per_sample == 32) {
+                        const float* ptr = reinterpret_cast<const float*>(mmap_file.ptr + boffset);
+                        r = ptr[0]; if (channels == 2) i = ptr[1];
+                    } else if (bits_per_sample == 64) {
+                        const double* ptr = reinterpret_cast<const double*>(mmap_file.ptr + boffset);
+                        r = ptr[0]; if (channels == 2) i = ptr[1];
+                    }
+                };
+
+                if (decimation_factor > 1) {
+                    // Grab samples for decimation
+                    double f_shift_norm = f_shift / file_sample_rate;
+                    double start_phase = -2.0 * M_PI * f_shift_norm * a_start; // absolute phase sync
+                    kfr::complex<double> phasor(cos(-2.0 * M_PI * f_shift_norm), sin(-2.0 * M_PI * f_shift_norm));
+                    kfr::complex<double> current_phase_val(cos(start_phase), sin(start_phase));
+                    
+                    size_t actual_read = std::min(in_size_needed, end_sample - a_start);
+                    for (size_t i = 0; i < actual_read; ++i) {
+                        double sr = 0, si = 0;
+                        read_sample(i, sr, si);
+                        raw_samples[i] = kfr::complex<double>(sr, si) * current_phase_val;
+                        current_phase_val = current_phase_val * phasor;
+                        if (i % 1000 == 0) { // normalize
+                            double mag = std::sqrt(current_phase_val.real() * current_phase_val.real() + current_phase_val.imag() * current_phase_val.imag());
+                            current_phase_val = current_phase_val / mag;
                         }
                     }
-                } else if (bits_per_sample == 16) {
-                    const int16_t* ptr = reinterpret_cast<const int16_t*>(mmap_file.ptr + byte_offset);
+                    for (size_t i = actual_read; i < in_size_needed; ++i) raw_samples[i] = 0;
+                    
+                    // Decimate
                     for (size_t i = 0; i < fft_size; ++i) {
-                        if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i]/32768.0, ptr[2*i+1]/32768.0) * window[i];
-                        else in_real[i] = (ptr[i]/32768.0) * window[i];
+                        kfr::complex<double> sum = 0;
+                        size_t base_idx = i * decimation_factor;
+                        for (int k = 0; k < num_taps; ++k) {
+                            sum += raw_samples[base_idx + k] * taps[k];
+                        }
+                        in_complex[i] = sum * window[i];
                     }
-                } else if (bits_per_sample == 32) {
-                    const float* ptr = reinterpret_cast<const float*>(mmap_file.ptr + byte_offset);
-                    for (size_t i = 0; i < fft_size; ++i) {
-                        if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i], ptr[2*i+1]) * window[i];
-                        else in_real[i] = ptr[i] * window[i];
+                } else {
+                    size_t actual_read = std::min(fft_size, end_sample - a_start);
+                    for (size_t i = 0; i < actual_read; ++i) {
+                        double sr = 0, si = 0;
+                        read_sample(i, sr, si);
+                        if (channels == 2) in_complex[i] = kfr::complex<double>(sr, si) * window[i];
+                        else in_real[i] = sr * window[i];
                     }
-                } else if (bits_per_sample == 64) {
-                    const double* ptr = reinterpret_cast<const double*>(mmap_file.ptr + byte_offset);
-                    for (size_t i = 0; i < fft_size; ++i) {
-                        if (channels == 2) in_complex[i] = kfr::complex<double>(ptr[2*i], ptr[2*i+1]) * window[i];
-                        else in_real[i] = ptr[i] * window[i];
+                    for (size_t i = actual_read; i < fft_size; ++i) {
+                        if (channels == 2) in_complex[i] = 0; else in_real[i] = 0;
                     }
                 }
                 

@@ -56,6 +56,12 @@ int main(int argc, char** argv) {
     int averaging = 4; // Default to 4 overlapping FFTs per step for smoothing
     std::string title = "";
 
+    double box_start_time = -1.0;
+    double box_duration = 0.0;
+    double box_center_freq = 0.0;
+    double box_bw = 0.0;
+    std::string box_color = "white";
+
     app.add_flag("--generate-examples", generate_examples, "Generate example_real.bin and example_complex.bin test files");
 
     app.add_option("-i,--input", input_file, "Input binary file");
@@ -105,6 +111,12 @@ int main(int argc, char** argv) {
     app.add_option("--y-ticks", y_ticks, "Number of grid ticks on the Y axis");
     app.add_option("--averaging", averaging, "Number of overlapping FFTs to average per row (default: 4)")->check(CLI::PositiveNumber);
     app.add_option("--title", title, "Title of the plot (default: input filename)");
+
+    app.add_option("--box-start-time", box_start_time, "Start time in seconds for highlight box (overlay)");
+    app.add_option("--box-duration", box_duration, "Duration in seconds for highlight box (overlay)");
+    app.add_option("--box-center-freq", box_center_freq, "Center frequency in MHz for highlight box (overlay)");
+    app.add_option("--box-bw", box_bw, "Bandwidth in MHz for highlight box (overlay)");
+    app.add_option("--box-color", box_color, "Color for highlight box: red, green, blue, yellow, white, cyan, magenta, black (default: white)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -352,7 +364,8 @@ int main(int argc, char** argv) {
             }
             PlotGenerator::generate_fast_waterfall(spectrogram, wfile, width, height, colormap,
                                         final_min_db, final_max_db,
-                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, font_path);
+                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, font_path,
+                                        box_start_time, box_duration, box_center_freq, box_bw, box_color);
             spdlog::info("Waterfall rendered to {} in {:.5f} seconds", wfile, sw_plot);
         }
         

@@ -1,4 +1,5 @@
 #include "plot_generator.hpp"
+#include <iostream>
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -422,7 +423,10 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                                             const std::string& title,
                                             int jpeg_quality,
                                             int png_compression,
-                                            const std::string& font_path) {
+                                            const std::string& font_path,
+                                            double box_start_time, double box_duration,
+                                            double box_center_freq, double box_bw,
+                                            const std::string& box_color) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -464,6 +468,55 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                 else color = Colormap::get_turbo(norm_val);
             }
             set_pixel(pixels, out_width, out_height, plot_x + x, plot_y + y, color);
+        }
+    }
+    
+    // Draw optional box overlay
+    if (box_start_time >= 0 && box_duration > 0 && box_bw > 0) {
+        int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
+        int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
+        
+        double freq_min = center_freq_mhz - bandwidth_mhz / 2.0;
+        double box_freq_min = box_center_freq - box_bw / 2.0;
+        double box_freq_max = box_center_freq + box_bw / 2.0;
+        
+        int start_x = plot_x + static_cast<int>((box_freq_min - freq_min) / bandwidth_mhz * plot_w);
+        int end_x = plot_x + static_cast<int>((box_freq_max - freq_min) / bandwidth_mhz * plot_w);
+        
+        // Clamp to plot area
+        start_x = std::clamp(start_x, plot_x, plot_x + plot_w - 1);
+        end_x = std::clamp(end_x, plot_x, plot_x + plot_w - 1);
+        start_y = std::clamp(start_y, plot_y, plot_y + plot_h - 1);
+        end_y = std::clamp(end_y, plot_y, plot_y + plot_h - 1);
+        
+        RGB color = {255, 0, 0}; // default red
+        if (box_color == "green") color = {0, 255, 0};
+        else if (box_color == "blue") color = {0, 100, 255};
+        else if (box_color == "yellow") color = {255, 255, 0};
+        else if (box_color == "white") color = {255, 255, 255};
+        else if (box_color == "cyan") color = {0, 255, 255};
+        else if (box_color == "magenta") color = {255, 0, 255};
+        else if (box_color == "black") color = {0, 0, 0};
+        
+        int outline_thickness = std::max(1, out_width / 500);
+        
+        for (int y = start_y; y <= end_y; ++y) {
+            for (int x = start_x; x <= end_x; ++x) {
+                bool is_edge = (x < start_x + outline_thickness || x > end_x - outline_thickness || 
+                                y < start_y + outline_thickness || y > end_y - outline_thickness);
+                
+                size_t idx = (y * out_width + x) * 3;
+                if (is_edge) {
+                    pixels[idx] = color.r;
+                    pixels[idx + 1] = color.g;
+                    pixels[idx + 2] = color.b;
+                } else {
+                    // Mild transparency (e.g. blend 30% color with 70% original)
+                    pixels[idx] = static_cast<unsigned char>(pixels[idx] * 0.7 + color.r * 0.3);
+                    pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * 0.7 + color.g * 0.3);
+                    pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * 0.7 + color.b * 0.3);
+                }
+            }
         }
     }
     
