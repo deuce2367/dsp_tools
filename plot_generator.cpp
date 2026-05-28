@@ -165,7 +165,24 @@ static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
     return atlas;
 }
 
-// Draw a string
+static int get_text_width(const std::string& text, int scale, const std::string& font_path) {
+    FontAtlas& atlas = get_font_atlas(font_path, scale);
+    if (atlas.loaded) {
+        float xpos = 0;
+        float ypos = 0;
+        for (char c : text) {
+            if (c >= 32 && c < 128) {
+                stbtt_aligned_quad q;
+                stbtt_GetBakedQuad(atlas.cdata, atlas.tex_w, atlas.tex_h, c - 32, &xpos, &ypos, &q, 1);
+            }
+        }
+        return static_cast<int>(xpos);
+    } else {
+        return text.length() * 8 * scale;
+    }
+}
+
+// Draw text onto image
 static void draw_text(std::vector<unsigned char>& pixels, int width, int height, int x, int y, const std::string& text, RGB color, int scale = 1, const std::string& font_path = "") {
     FontAtlas& atlas = get_font_atlas(font_path, scale);
     
@@ -228,7 +245,6 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                const std::string& title = "",
                                const std::string& font_path = "") {
     RGB axis_color = {200, 200, 200};
-    RGB grid_color = {80, 80, 80};
     
     // Draw Grid and Box
     draw_line(pixels, full_width, full_height, plot_x, plot_y, plot_x + plot_w - 1, plot_y, axis_color);
@@ -240,13 +256,13 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
         for (int i = 1; i < num_x_ticks; ++i) {
             int x = plot_x + plot_w * i / num_x_ticks;
             for (int y = plot_y; y < plot_y + plot_h; ++y) {
-                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.5f);
+                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.2f);
             }
         }
         for (int i = 1; i < num_y_ticks; ++i) {
             int y = plot_y + plot_h * i / num_y_ticks;
             for (int x = plot_x; x < plot_x + plot_w; ++x) {
-                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.5f);
+                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.2f);
             }
         }
     }
@@ -266,27 +282,37 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             for (int i = 0; i <= num_x_ticks; ++i) {
                 double f = start_f + step_f * i;
                 std::ostringstream ss;
-                ss << std::fixed << std::setprecision(2) << f << " MHz";
+                ss << std::fixed << std::setprecision(2) << f;
                 
                 int x_pos = plot_x + (plot_w * i) / num_x_ticks;
-                int text_width = ss.str().length() * 6 * text_scale;
+                int text_width = get_text_width(ss.str(), text_scale, font_path);
                 int draw_x_pos = x_pos - text_width / 2;
                 
-                // Draw tick mark extending from grid line (subtle)
-                draw_line(pixels, full_width, full_height, x_pos, plot_y + plot_h, x_pos, plot_y + plot_h + 3 * text_scale, axis_color);
+                // Draw tick mark
+                draw_line(pixels, full_width, full_height, x_pos, plot_y + plot_h, x_pos, plot_y + plot_h + text_scale, axis_color);
                 
                 // Prevent overlaps
                 if (i != 0 && i != num_x_ticks) {
-                    if (draw_x_pos < last_label_end_x + 15 * text_scale) continue;
+                    if (draw_x_pos < last_label_end_x + 5 * text_scale) continue;
                     
-                    int final_label_x = plot_x + plot_w - (text_width + 2);
-                    if (draw_x_pos + text_width + 15 * text_scale > final_label_x) continue;
+                    std::ostringstream ss_last;
+                    ss_last << std::fixed << std::setprecision(2) << start_f + step_f * num_x_ticks;
+                    int last_width = get_text_width(ss_last.str(), text_scale, font_path);
+                    int final_label_x = plot_x + plot_w - last_width / 2;
+                    if (draw_x_pos + text_width + 5 * text_scale > final_label_x) continue;
                 }
                 
-                int y_pos = plot_y + plot_h + 5 * text_scale;
+                int y_pos = plot_y + plot_h + 2 * text_scale;
                 draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
                 last_label_end_x = draw_x_pos + text_width;
             }
+            
+            std::string x_axis_title = "Frequency (MHz)";
+            int title_scale = std::max(1, text_scale - 1);
+            int title_w = get_text_width(x_axis_title, title_scale, font_path);
+            int title_x = plot_x + plot_w / 2 - title_w / 2;
+            int title_y = plot_y + plot_h + 15 * text_scale;
+            draw_text(pixels, full_width, full_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
         }
 
         // Y-axis: Time or dB
@@ -297,22 +323,22 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 if (t_pos != std::string::npos) {
                     std::string date_str = time_str.substr(0, t_pos);
                     std::string time_only_str = time_str.substr(t_pos + 1);
-                    int date_w = date_str.length() * 6 * text_scale;
-                    int time_w = time_only_str.length() * 6 * text_scale;
-                    int date_x = std::max(2 * text_scale, plot_x - date_w - 6 * text_scale);
-                    int time_x = std::max(2 * text_scale, plot_x - time_w - 6 * text_scale);
-                    draw_text(pixels, full_width, full_height, date_x, plot_y - 25 * text_scale, date_str, axis_color, text_scale, font_path);
-                    draw_text(pixels, full_width, full_height, time_x, plot_y - 14 * text_scale, time_only_str, axis_color, text_scale, font_path);
+                    int date_w = get_text_width(date_str, text_scale, font_path);
+                    int time_w = get_text_width(time_only_str, text_scale, font_path);
+                    int date_x = std::max(2 * text_scale, plot_x - date_w - 3 * text_scale);
+                    int time_x = std::max(2 * text_scale, plot_x - time_w - 3 * text_scale);
+                    draw_text(pixels, full_width, full_height, date_x, plot_y - 20 * text_scale, date_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, time_x, plot_y - 10 * text_scale, time_only_str, axis_color, text_scale, font_path);
                 } else {
-                    int text_w = time_str.length() * 6 * text_scale;
-                    int text_x = std::max(2 * text_scale, plot_x - text_w - 6 * text_scale);
-                    draw_text(pixels, full_width, full_height, text_x, plot_y - 14 * text_scale, time_str, axis_color, text_scale, font_path);
+                    int text_w = get_text_width(time_str, text_scale, font_path);
+                    int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
+                    draw_text(pixels, full_width, full_height, text_x, plot_y - 10 * text_scale, time_str, axis_color, text_scale, font_path);
                 }
             } else {
                 std::string s0 = "0.00s";
-                int text_w = s0.length() * 6 * text_scale;
-                int text_x = std::max(2 * text_scale, plot_x - text_w - 6 * text_scale);
-                draw_text(pixels, full_width, full_height, text_x, plot_y - 14 * text_scale, s0, axis_color, text_scale, font_path);
+                int text_w = get_text_width(s0, text_scale, font_path);
+                int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
+                draw_text(pixels, full_width, full_height, text_x, plot_y - 10 * text_scale, s0, axis_color, text_scale, font_path);
             }
             
             if (total_duration_sec > 0.0) {
@@ -324,12 +350,14 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     
                     int y_pos = plot_y + (plot_h * i) / num_y_ticks;
                     
-                    // Draw tick mark (subtle)
-                    draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, y_pos, plot_x, y_pos, axis_color);
+                    // Draw tick mark
+                    draw_line(pixels, full_width, full_height, plot_x - text_scale, y_pos, plot_x, y_pos, axis_color);
                     
-                    // Align left of axis, center vertically
-                    int text_width = ss.str().length() * 6 * text_scale; // Estimate width
-                    draw_text(pixels, full_width, full_height, plot_x - text_width - 6 * text_scale, y_pos - 6 * text_scale, ss.str(), axis_color, text_scale, font_path);
+                    // Omit the bottom-most label to prevent collision with the X-axis label
+                    if (i < num_y_ticks) {
+                        int text_width = get_text_width(ss.str(), text_scale, font_path);
+                        draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, y_pos - 6 * text_scale, ss.str(), axis_color, text_scale, font_path);
+                    }
                 }
             }
         } else {
@@ -337,21 +365,20 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             ss_max << std::fixed << std::setprecision(0) << max_db << " dB";
             ss_min << std::fixed << std::setprecision(0) << min_db << " dB";
             
-            // Draw tick marks (subtle)
-            draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, plot_y, plot_x, plot_y, axis_color);
-            draw_line(pixels, full_width, full_height, plot_x - 3 * text_scale, plot_y + plot_h, plot_x, plot_y + plot_h, axis_color);
+            draw_line(pixels, full_width, full_height, plot_x - text_scale, plot_y, plot_x, plot_y, axis_color);
+            draw_line(pixels, full_width, full_height, plot_x - text_scale, plot_y + plot_h - 1, plot_x, plot_y + plot_h - 1, axis_color);
             
-            int text_width_max = ss_max.str().length() * 6 * text_scale;
-            int text_width_min = ss_min.str().length() * 6 * text_scale;
+            int text_width_max = get_text_width(ss_max.str(), text_scale, font_path);
+            int text_width_min = get_text_width(ss_min.str(), text_scale, font_path);
             
-            draw_text(pixels, full_width, full_height, plot_x - text_width_max - 6 * text_scale, plot_y - 6 * text_scale, ss_max.str(), axis_color, text_scale, font_path);
-            draw_text(pixels, full_width, full_height, plot_x - text_width_min - 6 * text_scale, plot_y + plot_h - 6 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, plot_x - text_width_max - 3 * text_scale, plot_y - 6 * text_scale, ss_max.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, plot_x - text_width_min - 3 * text_scale, plot_y + plot_h - 6 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
         }
         
         // Draw Legend (Colorbar)
         if (!colormap.empty() && plot_w > 0 && plot_h > 0) {
-            int leg_w = 15 * text_scale;
-            int leg_x = plot_x + plot_w + 10 * text_scale;
+            int leg_w = 10 * text_scale;
+            int leg_x = plot_x + plot_w + 8 * text_scale;
             int leg_y = plot_y;
             int leg_h = plot_h;
             
@@ -391,12 +418,12 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
         // Draw Title
         if (!title.empty()) {
             int title_scale = text_scale + 1; // Make it larger
-            int text_width = title.length() * 6 * title_scale; // Estimate TTF width
+            int text_width = get_text_width(title, title_scale, font_path);
             
             // If title overruns, scale it down to fit
             if (text_width > plot_w && title_scale > 1) {
                 title_scale = text_scale;
-                text_width = title.length() * 6 * title_scale;
+                text_width = get_text_width(title, title_scale, font_path);
             }
             
             int title_x = plot_x + plot_w / 2 - text_width / 2;
@@ -429,9 +456,9 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     
     int text_scale = std::max(1, out_width / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 40 * text_scale : 0;
+    int margin_bottom = draw_labels ? 28 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? (!colormap.empty() ? 70 * text_scale : 60 * text_scale) : 0;
+    int margin_right = draw_labels ? (!colormap.empty() ? 45 * text_scale : 25 * text_scale) : 0;
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -491,9 +518,9 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     
     int text_scale = std::max(1, out_width / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 40 * text_scale : 0;
+    int margin_bottom = draw_labels ? 28 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? 60 * text_scale : 0;
+    int margin_right = draw_labels ? 25 * text_scale : 0;
     
     int plot_x = margin_left;
     int plot_y = margin_top;
