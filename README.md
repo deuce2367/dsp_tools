@@ -2,11 +2,11 @@
 
 ![Example Output](waterfall.jpg)
 
-A high-performance C++ tool for generating FFT spectrum and waterfall plots from complex and real signals (including SigMF, X-Midas Blue, and standard WAV files). It is designed to be highly memory-efficient through streaming data via `mmap()` and fast by offloading heavy math to the SIMD-accelerated KFR framework. 
+A high-performance C++ tool for generating FFT spectrum and waterfall image plots from complex and real signals (including SigMF, X-Midas Blue, and standard WAV files). It is designed to be highly memory-efficient through streaming data via `mmap()` and fast by offloading heavy math to the SIMD-accelerated KFR framework. 
 
 ## Features
 
-- **Blazing Fast**: Uses KFR for vectorized FFT operations and STB for rapid PNG encoding.
+- **Blazing Fast**: Uses KFR for vectorized FFT operations and STB for rapid PNG and JPG encoding.
 - **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
 - **Dynamic Zooming**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution.
