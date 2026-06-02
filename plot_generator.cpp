@@ -123,7 +123,9 @@ static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
             fseek(f, 0, SEEK_SET);
             
             ttf_buffer.resize(size);
-            fread(ttf_buffer.data(), 1, size, f);
+            if (fread(ttf_buffer.data(), 1, size, f)) {
+                // Return value intentionally ignored
+            }
             fclose(f);
         }
     }
@@ -571,12 +573,11 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         if (colormap_name == "pablo") return Colormap::get_pablo(norm);
         if (colormap_name == "turbo") return Colormap::get_turbo(norm);
         if (colormap_name == "frog") return Colormap::get_frog(norm);
+        if (colormap_name == "grape") return Colormap::get_grape(norm);
         if (colormap_name == "jet") return Colormap::get_jet(norm);
         return Colormap::get_turbo(norm); // default
     };
 
-    RGB line_color = get_cmap_color(0.6f); // Use a prominent color from the upper-middle of the colormap
-    
     int prev_x = -1;
     int prev_y = -1;
     int data_bins = magnitude_db.size();
@@ -589,13 +590,17 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         norm_val = std::clamp(norm_val, 0.0f, 1.0f);
         int y = plot_h - 1 - static_cast<int>(norm_val * (plot_h - 1));
         
+        RGB current_color = get_cmap_color(norm_val);
+        
         if (x > 0) {
-            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
+            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, current_color);
         }
         
-        // Fill opacity
+        // Fill opacity with gradient
         for (int fy = y + 1; fy < plot_h; ++fy) {
-            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, line_color, 0.4f);
+            float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
+            RGB fill_color = get_cmap_color(norm_fy);
+            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
         }
         
         prev_x = x;

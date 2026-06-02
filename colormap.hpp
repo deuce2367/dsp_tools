@@ -8,12 +8,14 @@ class Colormap {
 public:
     static RGB get_frog(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 4;
-        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        const int num_stops = 6;
+        float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
         RGB colors[num_stops] = {
             {0, 0, 0},        // Black
-            {0, 128, 0},      // Dark Green
-            {0, 255, 0},      // Green
+            {0, 80, 0},       // Dark Green
+            {0, 180, 0},      // Forest Green
+            {50, 255, 50},    // Lime Green
+            {255, 255, 0},    // Yellow
             {255, 255, 255}   // White
         };
         
@@ -31,12 +33,14 @@ public:
     }
     static RGB get_grape(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 4;
-        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        const int num_stops = 6;
+        float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
         RGB colors[num_stops] = {
             {0, 0, 0},        // Black
-            {50, 0, 100},     // Dark Violet
+            {30, 0, 60},      // Deep Purple
+            {100, 0, 150},    // Violet
             {200, 20, 255},   // Neon Purple
+            {255, 100, 200},  // Hot Pink
             {255, 255, 255}   // White
         };
         
@@ -56,12 +60,14 @@ public:
 
     static RGB get_electric(float value) {
         value = std::max(0.0f, std::min(1.0f, value));
-        const int num_stops = 4;
-        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        const int num_stops = 6;
+        float stops[num_stops] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
         RGB colors[num_stops] = {
             {0, 0, 0},        // Black
+            {0, 0, 100},      // Dark Blue
             {0, 0, 255},      // Blue
             {0, 255, 255},    // Cyan
+            {255, 255, 0},    // Yellow
             {255, 255, 255}   // White
         };
         

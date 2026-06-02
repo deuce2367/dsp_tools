@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     app.add_flag("--plot-fft", plot_fft, "Generate a 1D FFT plot of the first frame");
     app.add_flag("--plot-waterfall", plot_waterfall, "Generate a 2D PSD Waterfall plot");
 
-    app.add_option("-o,--output", output_name, "Base output filename (default: derived from input)");    
+    auto opt_output = app.add_option("-o,--output", output_name, "Output filename (if not specified, derived from input by appending _waterfall/_fft)");    
     auto* opt_format = app.add_option("--out-format", out_format, "Output image format: png or jpg (default: jpg)")
         ->check(CLI::IsMember({"png", "jpg", "jpeg"}));
     
@@ -84,10 +84,10 @@ int main(int argc, char** argv) {
     app.add_flag("--peak-detection", peak_detection, "Enable squelch signal detection output to CSV");
     app.add_option("--peak-threshold", peak_threshold, "Signal detection threshold in dB above noise floor (default: 15.0)");
 
-    app.add_option("--width", width, "Output image width");
-    app.add_option("--height", height, "Output image height");
+    app.add_option("--width", width, "Output image width in pixels (default: 512)");
+    app.add_option("--height", height, "Output image height in pixels (default: 512)");
     auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: auto based on width)");
-    auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap");
+    auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap in samples (default: 512). Controls time resolution stride.");
     app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: gqrx)")
         ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"}));
     
@@ -99,8 +99,8 @@ int main(int argc, char** argv) {
     auto opt_zoom_center = app.add_option("--zoom-center", zoom_center, "Absolute zoom center frequency in MHz");
     double zoom_offset = 0.0;
     auto opt_zoom_offset = app.add_option("--zoom-offset", zoom_offset, "Zoom offset from center frequency in MHz");
-    app.add_option("--zoom-bw", zoom_bw, "Zoom bandwidth in MHz");
-    app.add_option("--window", window_type, "Window function: blackman-harris, hann, hamming, flattop, bartlett")->check(CLI::IsMember({"blackman-harris", "hann", "hamming", "flattop", "bartlett"}));
+    app.add_option("--zoom-bw", zoom_bw, "Zoom bandwidth in MHz (default: full bandwidth)");
+    app.add_option("--window", window_type, "Window function: blackman-harris, hann, hamming, flattop, bartlett (default: blackman-harris)")->check(CLI::IsMember({"blackman-harris", "hann", "hamming", "flattop", "bartlett"}));
     
     app.add_flag("--draw-grid", draw_grid, "Draw grid overlay on plots");
     app.add_flag("--draw-labels", draw_labels, "Draw axis labels on plots");
@@ -329,7 +329,7 @@ int main(int argc, char** argv) {
 
         if (plot_waterfall) {
             spdlog::stopwatch sw_plot;
-            std::string wfile = output_name + "_waterfall." + out_format;
+            std::string wfile = opt_output->count() > 0 ? output_name : output_name + "_waterfall." + out_format;
             spdlog::info("Generating Fast Waterfall {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
             
             double total_duration_sec = 0.0;
@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
         
         if (plot_fft && !spectrogram.empty()) {
             spdlog::stopwatch sw_plot;
-            std::string ffile = output_name + "_fft." + out_format;
+            std::string ffile = opt_output->count() > 0 ? output_name : output_name + "_fft." + out_format;
             spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
             PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, colormap, font_path);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);

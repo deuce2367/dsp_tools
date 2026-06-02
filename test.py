@@ -1,140 +1,172 @@
 import sys
 import os
+import argparse
+import time
 
 # Add build directory to path to find the dsp_plotter_py.so module
 build_dir = os.path.join(os.path.dirname(__file__), 'build')
 sys.path.append(build_dir)
 
-import dsp_plotter_py
+try:
+    import dsp_plotter_py
+except ImportError:
+    print("Error: Could not import dsp_plotter_py. Make sure you have compiled the python bindings.")
+    sys.exit(1)
 
 def main():
-    print("========================================")
-    print("DSP Plotter Python Bindings Example")
-    print("========================================")
+    parser = argparse.ArgumentParser(description="DSP Plotter Python Bindings Wrapper")
+    parser.add_argument("-i", "--input", required=True, help="Input binary file")
+    parser.add_argument("-f", "--format", choices=["real", "complex"], help="Data format: real or complex")
+    parser.add_argument("--data-type", choices=["float32", "float64", "int16", "int8"], help="Input data type")
     
-    # 1. Initialize the DSP Engine
-    # The argument is the default FFT window size (will be overridden if the config requests a different size)
-    engine = dsp_plotter_py.DspEngine(1024)
+    parser.add_argument("--plot-fft", action="store_true", help="Generate a 1D FFT plot")
+    parser.add_argument("--plot-waterfall", action="store_true", help="Generate a 2D PSD Waterfall plot")
     
-    test_file = "example.prm"
-    if not os.path.exists(test_file):
-        print(f"Error: {test_file} not found. Please ensure it exists in the current directory.")
-        return
+    parser.add_argument("-o", "--output", help="Output filename")
+    parser.add_argument("-c", "--colormap", default="gqrx", choices=["electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"], help="Colormap for waterfall (default: turbo)")
+    
+    parser.add_argument("--width", type=int, default=800, help="Output image width")
+    parser.add_argument("--height", type=int, default=600, help="Output image height")
+    
+    parser.add_argument("--min-db", type=float, default=1.0, help="Minimum dB level (default: 1.0 for auto-leveling)")
+    parser.add_argument("--max-db", type=float, default=1.0, help="Maximum dB level (default: 1.0 for auto-leveling)")
+    
+    parser.add_argument("--center-freq", type=float, default=0.0, help="Center frequency in MHz")
+    parser.add_argument("--bandwidth", type=float, default=0.0, help="Bandwidth in MHz")
+    parser.add_argument("--zoom-center", type=float, default=0.0, help="Zoom center frequency in MHz")
+    parser.add_argument("--zoom-bw", type=float, default=0.0, help="Zoom bandwidth in MHz")
+    
+    parser.add_argument("--averaging", type=int, default=4, help="Number of overlapping FFTs to average per row (default: 4)")
+    
+    args = parser.parse_args()
+    
+    if not args.plot_fft and not args.plot_waterfall:
+        print("Neither --plot-fft nor --plot-waterfall specified. Defaulting to waterfall.")
+        args.plot_waterfall = True
+
+    if not os.path.exists(args.input):
+        print(f"Error: {args.input} not found.")
+        sys.exit(1)
         
-    # 2. Extract File Info
-    # Returns a tuple: (channels, sample_rate, is_wav, is_blue, format_str, timecode)
-    info = engine.get_file_info(test_file)
-    print(f"[{test_file}] Detected format: {info[4]}, Channels: {info[0]}, Rate: {info[1]} Hz")
+    engine = dsp_plotter_py.DspEngine(1024)
+    info = engine.get_file_info(args.input)
+    # info: (channels, sample_rate, is_wav, is_blue, format_str, timecode)
+    channels = info[0]
+    sample_rate = info[1]
+    is_wav = info[2]
+    is_blue = info[3]
+    format_str = info[4]
+    timecode = info[5]
     
-    # 3. Configure the Processing Job
+    detected_format = "complex" if channels == 2 else "real"
+    data_fmt = args.format if args.format else detected_format
+    dtype = args.data_type if args.data_type else format_str
+    
+    print("========================================")
+    print("DSP Plotter Python Engine")
+    print("========================================")
+    print(f"[{args.input}] Detected format: {data_fmt} ({dtype}), Channels: {channels}, Rate: {sample_rate} Hz")
+
     config = dsp_plotter_py.StreamConfig()
-    config.filename = test_file
-    
-    # We must provide basic parameters. In a real script, you might extract these
-    # from a SigMF file or the user, but for now we'll set some defaults based on the header.
-    config.sample_rate = info[1] if info[1] > 1.0 else 1000000.0  # 1 MHz default
-    config.is_wav = info[2]
-    config.is_blue = info[3]
-    
-    # If it's a raw file, we must tell the engine if it's complex or real
-    if not config.is_wav and not config.is_blue:
-        config.data_type = "complex" if info[0] == 2 else info[4]
-    else:
-        config.data_type = info[4]
-    
-    # Configure output image dimensions (determines how many FFTs are calculated)
-    out_width = 800
-    out_height = 600
-    config.output_width = out_width
-    config.output_height = out_height
-    
-    # Define zoom parameters (optional)
-    center_freq_mhz = 0.0
-    bandwidth_mhz = config.sample_rate / 1e6
-    config.zoom_center = center_freq_mhz
-    config.zoom_bw = bandwidth_mhz
-    
-    # 4. Execute the C++ DSP Math Engine
-    print("\nProcessing file via C++ DSP engine (blazing fast!)...")
+    config.filename = args.input
+    config.is_wav = is_wav
+    config.is_blue = is_blue
+    config.data_type = dtype
+    if not is_wav and not is_blue and data_fmt == "complex":
+        config.data_type = "complex"
+        
+    config.sample_rate = sample_rate
+    config.center_freq = args.center_freq
+    config.zoom_center = args.zoom_center
+    config.zoom_bw = args.zoom_bw
+    config.output_width = args.width
+    config.output_height = args.height
+    config.time_smoothing = args.averaging
+
+    print("\nProcessing file via C++ DSP engine...")
+    t0 = time.time()
     result = engine.process_file_streaming(config)
+    t1 = time.time()
     
-    # The C++ std::vectors are instantly accessible as Python lists!
     spectrogram = result.spectrogram
+    print(f"-> DSP processing took {t1 - t0:.5f} seconds")
     print(f"-> Output Spectrogram Shape: {len(spectrogram)} rows x {len(spectrogram[0])} bins")
     
-    # 5. Generate Visualizations via C++ PlotGenerator
-    print("\nRendering plots via C++ backend...")
+    # Auto-leveling
+    actual_min_db = 0.0
+    actual_max_db = -1000.0
+    sum_db = 0.0
+    count_db = 0
+    if spectrogram:
+        for row in spectrogram:
+            for val in row:
+                if val < actual_min_db: actual_min_db = val
+                if val > actual_max_db: actual_max_db = val
+                sum_db += val
+                count_db += 1
+                
+    mean_db = sum_db / count_db if count_db > 0 else -100.0
+    final_min_db = (mean_db - 15.0) if args.min_db == 1.0 else args.min_db
+    final_max_db = actual_max_db if args.max_db == 1.0 else args.max_db
     
-    # To prevent garbled overlapping text, dynamically calculate the number of axis ticks based on image width
-    # This mimics the smart-scaling logic from the main C++ CLI
-    num_x_ticks = max(1, out_width // 256)
-    num_y_ticks = max(1, out_height // 64)
+    # Labels
+    z_center = result.actual_zoom_center
+    fs = result.actual_zoom_bw
     
-    min_db = -100.0
-    max_db = 0.0
+    out_base = args.output if args.output else os.path.splitext(os.path.basename(args.input))[0]
     
-    # ---------------------------------------------
-    # Example A: Render an FFT Plot
-    # ---------------------------------------------
-    # generate_fast_fft_plot needs an array of frequency bins, though they are purely for the x-axis mapping
-    dummy_freqs = [i for i in range(len(result.avg_fft))]
+    num_x_ticks = max(1, args.width // 100)
+    num_y_ticks = max(1, args.height // 60)
     
-    fft_filename = "example_python_fft.png"
-    dsp_plotter_py.PlotGenerator.generate_fast_fft_plot(
-        frequency_bins=dummy_freqs,
-        magnitude_db=result.avg_fft,          # Use the average FFT array for a smooth plot
-        output_filename=fft_filename,
-        out_width=out_width,
-        out_height=out_height,
-        min_db=min_db,
-        max_db=max_db,
-        center_freq_mhz=center_freq_mhz,
-        bandwidth_mhz=bandwidth_mhz,
-        draw_grid=True,
-        draw_labels=True,
-        out_format="png",
-        num_x_ticks=num_x_ticks,              # Prevent axis garbling!
-        num_y_ticks=num_y_ticks,
-        title="Python FFT Plot (Average)",
-        jpeg_quality=90,
-        png_compression=8,
-        colormap_name="turbo"                 # Give it a nice color!
-    )
-    print(f"-> Saved {fft_filename}")
-    
-    # ---------------------------------------------
-    # Example B: Render a Waterfall (Spectrogram)
-    # ---------------------------------------------
-    waterfall_filename = "example_python_waterfall.png"
-    
-    # For the waterfall, we provide a starting ISO time and total duration 
-    # to populate the Y-axis time labels.
-    start_time_iso = "2026-05-25T12:00:00Z"
-    total_duration_sec = 5.0  # Dummy duration
-    
-    dsp_plotter_py.PlotGenerator.generate_fast_waterfall(
-        spectrogram_db=spectrogram,           # The massive 2D array
-        output_filename=waterfall_filename,
-        out_width=out_width,
-        out_height=out_height,
-        colormap="turbo",                     # Valid options: turbo, jet, frog, electric, pablo, websdr, etc.
-        min_db=min_db,
-        max_db=max_db,
-        center_freq_mhz=center_freq_mhz,
-        bandwidth_mhz=bandwidth_mhz,
-        start_time_iso=start_time_iso,
-        total_duration_sec=total_duration_sec,
-        draw_grid=True,
-        draw_labels=True,
-        out_format="png",
-        num_x_ticks=num_x_ticks,              # Prevent axis garbling!
-        num_y_ticks=num_y_ticks,
-        title="Python Waterfall Plot",
-        jpeg_quality=90,
-        png_compression=8
-    )
-    print(f"-> Saved {waterfall_filename}")
-    print("\nDone! Check out the generated images.")
+    if args.plot_waterfall:
+        wfile = out_base if args.output else f"{out_base}_waterfall.png"
+        
+        bw = args.bandwidth if args.bandwidth > 0 else (sample_rate / 1e6)
+        tot_dur = 0.0
+        if bw > 0:
+            factor = 1.0 if data_fmt == "complex" else 2.0
+            tot_dur = len(spectrogram) * result.actual_step_size / (bw * 1e6 * factor)
+            
+        print(f"Generating Waterfall {wfile} (Range: {final_min_db:.1f} to {final_max_db:.1f} dB)...")
+        dsp_plotter_py.PlotGenerator.generate_fast_waterfall(
+            spectrogram_db=spectrogram,
+            output_filename=wfile,
+            out_width=args.width,
+            out_height=args.height,
+            colormap=args.colormap,
+            min_db=final_min_db,
+            max_db=final_max_db,
+            center_freq_mhz=z_center,
+            bandwidth_mhz=fs,
+            start_time_iso=f"{result.original_start_time:.2f}s",
+            total_duration_sec=tot_dur,
+            num_x_ticks=num_x_ticks,
+            num_y_ticks=num_y_ticks,
+            title=os.path.basename(args.input)
+        )
+        print(f"-> Saved {wfile}")
+
+    if args.plot_fft and spectrogram:
+        ffile = out_base if args.output else f"{out_base}_fft.png"
+        dummy_freqs = [0] * len(result.avg_fft) # Freqs computed in C++ wrapper
+        
+        print(f"Generating FFT {ffile} (Range: {final_min_db:.1f} to {final_max_db:.1f} dB)...")
+        dsp_plotter_py.PlotGenerator.generate_fast_fft_plot(
+            frequency_bins=dummy_freqs,
+            magnitude_db=result.avg_fft,
+            output_filename=ffile,
+            out_width=args.width,
+            out_height=args.height,
+            min_db=final_min_db,
+            max_db=final_max_db,
+            center_freq_mhz=z_center,
+            bandwidth_mhz=fs,
+            num_x_ticks=num_x_ticks,
+            num_y_ticks=num_y_ticks,
+            colormap_name=args.colormap,
+            title=os.path.basename(args.input)
+        )
+        print(f"-> Saved {ffile}")
 
 if __name__ == "__main__":
     main()
