@@ -398,8 +398,23 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
             for (double& t : taps) t /= sum;
         }
         
-        std::vector<kfr::complex<double>> raw_samples;
-        if (decimation_factor > 1) raw_samples.resize(in_size_needed);
+        size_t sub_step = (config.time_smoothing > 1) ? (step_size / config.time_smoothing) : step_size;
+        if (sub_step == 0) sub_step = 1;
+        
+        size_t baseband_sub_step = sub_step;
+        size_t max_baseband_samples_needed = fft_size;
+        size_t max_raw_samples_needed = fft_size;
+        
+        if (decimation_factor > 1) {
+            baseband_sub_step = std::max<size_t>(1, sub_step / decimation_factor);
+            max_baseband_samples_needed = fft_size + (config.time_smoothing - 1) * baseband_sub_step;
+            max_raw_samples_needed = max_baseband_samples_needed * decimation_factor + num_taps;
+        } else {
+            max_raw_samples_needed = fft_size + (config.time_smoothing - 1) * sub_step;
+        }
+        
+        std::vector<kfr::complex<double>> thread_raw_samples(max_raw_samples_needed);
+        std::vector<kfr::complex<double>> thread_baseband_samples(decimation_factor > 1 ? max_baseband_samples_needed : 0);
         
         #pragma omp for schedule(dynamic)
         for (size_t r = 0; r < num_rows; ++r) {
@@ -409,77 +424,93 @@ DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig&
             std::vector<double> avg_mag(fft_size, 0.0);
             int valid_averages = 0;
             
-            size_t sub_step = (config.time_smoothing > 1) ? (step_size / config.time_smoothing) : step_size;
-            if (sub_step == 0) sub_step = 1;
+            if (sample_idx > end_sample) continue;
             
+            size_t raw_samples_to_read = std::min(max_raw_samples_needed, end_sample - sample_idx);
+            
+            auto read_sample = [&](size_t idx, double& r_val, double& i_val) {
+                size_t boffset = data_offset + (sample_idx + idx) * channels * (bits_per_sample / 8);
+                if (bits_per_sample == 8) {
+                    if (config.is_wav) {
+                        const uint8_t* ptr = mmap_file.ptr + boffset;
+                        r_val = (ptr[0] - 127.5)/128.0; if (channels == 2) i_val = (ptr[1] - 127.5)/128.0;
+                    } else {
+                        const int8_t* ptr = reinterpret_cast<const int8_t*>(mmap_file.ptr + boffset);
+                        r_val = ptr[0]/128.0; if (channels == 2) i_val = ptr[1]/128.0;
+                    }
+                } else if (bits_per_sample == 16) {
+                    const int16_t* ptr = reinterpret_cast<const int16_t*>(mmap_file.ptr + boffset);
+                    r_val = ptr[0]/32768.0; if (channels == 2) i_val = ptr[1]/32768.0;
+                } else if (bits_per_sample == 32) {
+                    const float* ptr = reinterpret_cast<const float*>(mmap_file.ptr + boffset);
+                    r_val = ptr[0]; if (channels == 2) i_val = ptr[1];
+                } else if (bits_per_sample == 64) {
+                    const double* ptr = reinterpret_cast<const double*>(mmap_file.ptr + boffset);
+                    r_val = ptr[0]; if (channels == 2) i_val = ptr[1];
+                }
+            };
+
+            if (decimation_factor > 1) {
+                // Grab samples for decimation
+                double f_shift_norm = f_shift / file_sample_rate;
+                double start_phase = -2.0 * M_PI * f_shift_norm * sample_idx; // absolute phase sync
+                kfr::complex<double> phasor(cos(-2.0 * M_PI * f_shift_norm), sin(-2.0 * M_PI * f_shift_norm));
+                kfr::complex<double> current_phase_val(cos(start_phase), sin(start_phase));
+                
+                for (size_t i = 0; i < raw_samples_to_read; ++i) {
+                    double sr = 0, si = 0;
+                    read_sample(i, sr, si);
+                    thread_raw_samples[i] = kfr::complex<double>(sr, si) * current_phase_val;
+                    current_phase_val = current_phase_val * phasor;
+                    if (i % 1000 == 0) { // normalize
+                        double mag = std::sqrt(current_phase_val.real() * current_phase_val.real() + current_phase_val.imag() * current_phase_val.imag());
+                        current_phase_val = current_phase_val / mag;
+                    }
+                }
+                for (size_t i = raw_samples_to_read; i < max_raw_samples_needed; ++i) thread_raw_samples[i] = 0;
+                
+                // Decimate the entire block ONCE
+                for (size_t i = 0; i < max_baseband_samples_needed; ++i) {
+                    kfr::complex<double> sum = 0;
+                    size_t base_idx = i * decimation_factor;
+                    if (base_idx + num_taps <= max_raw_samples_needed) {
+                        for (int k = 0; k < num_taps; ++k) {
+                            sum += thread_raw_samples[base_idx + k] * taps[k];
+                        }
+                    }
+                    thread_baseband_samples[i] = sum;
+                }
+            } else {
+                for (size_t i = 0; i < raw_samples_to_read; ++i) {
+                    double sr = 0, si = 0;
+                    read_sample(i, sr, si);
+                    thread_raw_samples[i] = kfr::complex<double>(sr, si);
+                }
+                for (size_t i = raw_samples_to_read; i < max_raw_samples_needed; ++i) thread_raw_samples[i] = 0;
+            }
+
             for (int a = 0; a < config.time_smoothing; ++a) {
                 size_t a_start = sample_idx + a * sub_step;
                 if (a_start + fft_size > end_sample) break;
                 
-                size_t byte_offset = data_offset + a_start * channels * (bits_per_sample / 8);
-                
-                // Read & Convert
-                auto read_sample = [&](size_t idx, double& r, double& i) {
-                    size_t boffset = data_offset + (a_start + idx) * channels * (bits_per_sample / 8);
-                    if (bits_per_sample == 8) {
-                        if (config.is_wav) {
-                            const uint8_t* ptr = mmap_file.ptr + boffset;
-                            r = (ptr[0] - 127.5)/128.0; if (channels == 2) i = (ptr[1] - 127.5)/128.0;
-                        } else {
-                            const int8_t* ptr = reinterpret_cast<const int8_t*>(mmap_file.ptr + boffset);
-                            r = ptr[0]/128.0; if (channels == 2) i = ptr[1]/128.0;
-                        }
-                    } else if (bits_per_sample == 16) {
-                        const int16_t* ptr = reinterpret_cast<const int16_t*>(mmap_file.ptr + boffset);
-                        r = ptr[0]/32768.0; if (channels == 2) i = ptr[1]/32768.0;
-                    } else if (bits_per_sample == 32) {
-                        const float* ptr = reinterpret_cast<const float*>(mmap_file.ptr + boffset);
-                        r = ptr[0]; if (channels == 2) i = ptr[1];
-                    } else if (bits_per_sample == 64) {
-                        const double* ptr = reinterpret_cast<const double*>(mmap_file.ptr + boffset);
-                        r = ptr[0]; if (channels == 2) i = ptr[1];
-                    }
-                };
-
                 if (decimation_factor > 1) {
-                    // Grab samples for decimation
-                    double f_shift_norm = f_shift / file_sample_rate;
-                    double start_phase = -2.0 * M_PI * f_shift_norm * a_start; // absolute phase sync
-                    kfr::complex<double> phasor(cos(-2.0 * M_PI * f_shift_norm), sin(-2.0 * M_PI * f_shift_norm));
-                    kfr::complex<double> current_phase_val(cos(start_phase), sin(start_phase));
-                    
-                    size_t actual_read = std::min(in_size_needed, end_sample - a_start);
-                    for (size_t i = 0; i < actual_read; ++i) {
-                        double sr = 0, si = 0;
-                        read_sample(i, sr, si);
-                        raw_samples[i] = kfr::complex<double>(sr, si) * current_phase_val;
-                        current_phase_val = current_phase_val * phasor;
-                        if (i % 1000 == 0) { // normalize
-                            double mag = std::sqrt(current_phase_val.real() * current_phase_val.real() + current_phase_val.imag() * current_phase_val.imag());
-                            current_phase_val = current_phase_val / mag;
-                        }
-                    }
-                    for (size_t i = actual_read; i < in_size_needed; ++i) raw_samples[i] = 0;
-                    
-                    // Decimate
+                    size_t base = a * baseband_sub_step;
                     for (size_t i = 0; i < fft_size; ++i) {
-                        kfr::complex<double> sum = 0;
-                        size_t base_idx = i * decimation_factor;
-                        for (int k = 0; k < num_taps; ++k) {
-                            sum += raw_samples[base_idx + k] * taps[k];
+                        if (base + i < max_baseband_samples_needed) {
+                            in_complex[i] = thread_baseband_samples[base + i] * window[i];
+                        } else {
+                            in_complex[i] = 0;
                         }
-                        in_complex[i] = sum * window[i];
                     }
                 } else {
-                    size_t actual_read = std::min(fft_size, end_sample - a_start);
-                    for (size_t i = 0; i < actual_read; ++i) {
-                        double sr = 0, si = 0;
-                        read_sample(i, sr, si);
-                        if (channels == 2) in_complex[i] = kfr::complex<double>(sr, si) * window[i];
-                        else in_real[i] = sr * window[i];
-                    }
-                    for (size_t i = actual_read; i < fft_size; ++i) {
-                        if (channels == 2) in_complex[i] = 0; else in_real[i] = 0;
+                    size_t base = a * sub_step;
+                    for (size_t i = 0; i < fft_size; ++i) {
+                        if (base + i < max_raw_samples_needed) {
+                            if (channels == 2) in_complex[i] = thread_raw_samples[base + i] * window[i];
+                            else in_real[i] = thread_raw_samples[base + i].real() * window[i];
+                        } else {
+                            if (channels == 2) in_complex[i] = 0; else in_real[i] = 0;
+                        }
                     }
                 }
                 
