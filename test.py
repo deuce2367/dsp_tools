@@ -23,10 +23,14 @@ def main():
     parser.add_argument("--plot-waterfall", action="store_true", help="Generate a 2D PSD Waterfall plot")
     
     parser.add_argument("-o", "--output", help="Output filename")
-    parser.add_argument("-c", "--colormap", default="gqrx", choices=["electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"], help="Colormap for waterfall (default: turbo)")
+    parser.add_argument("--out-format", choices=["png", "jpg"], default="jpg", help="Output image format (default: jpg)")
+    parser.add_argument("--jpeg-quality", type=int, default=90, help="JPEG quality 1-100 (default: 90)")
+    parser.add_argument("--png-compression", type=int, default=8, help="PNG compression 0-9 (default: 8)")
     
-    parser.add_argument("--width", type=int, default=800, help="Output image width")
-    parser.add_argument("--height", type=int, default=600, help="Output image height")
+    parser.add_argument("-c", "--colormap", default="turbo", choices=["electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"], help="Colormap for waterfall (default: turbo)")
+    
+    parser.add_argument("--width", type=int, default=512, help="Output image width")
+    parser.add_argument("--height", type=int, default=512, help="Output image height")
     
     parser.add_argument("--min-db", type=float, default=1.0, help="Minimum dB level (default: 1.0 for auto-leveling)")
     parser.add_argument("--max-db", type=float, default=1.0, help="Maximum dB level (default: 1.0 for auto-leveling)")
@@ -119,7 +123,7 @@ def main():
     num_y_ticks = max(1, args.height // 60)
     
     if args.plot_waterfall:
-        wfile = out_base if args.output else f"{out_base}_waterfall.png"
+        wfile = out_base if args.output else f"{out_base}_waterfall.{args.out_format}"
         
         bw = args.bandwidth if args.bandwidth > 0 else (sample_rate / 1e6)
         tot_dur = 0.0
@@ -140,14 +144,17 @@ def main():
             bandwidth_mhz=fs,
             start_time_iso=f"{result.original_start_time:.2f}s",
             total_duration_sec=tot_dur,
+            out_format=args.out_format,
             num_x_ticks=num_x_ticks,
             num_y_ticks=num_y_ticks,
-            title=os.path.basename(args.input)
+            title=os.path.basename(args.input),
+            jpeg_quality=args.jpeg_quality,
+            png_compression=args.png_compression
         )
         print(f"-> Saved {wfile}")
 
     if args.plot_fft and spectrogram:
-        ffile = out_base if args.output else f"{out_base}_fft.png"
+        ffile = out_base if args.output else f"{out_base}_fft.{args.out_format}"
         dummy_freqs = [0] * len(result.avg_fft) # Freqs computed in C++ wrapper
         
         print(f"Generating FFT {ffile} (Range: {final_min_db:.1f} to {final_max_db:.1f} dB)...")
@@ -161,10 +168,13 @@ def main():
             max_db=final_max_db,
             center_freq_mhz=z_center,
             bandwidth_mhz=fs,
+            out_format=args.out_format,
             num_x_ticks=num_x_ticks,
             num_y_ticks=num_y_ticks,
             colormap_name=args.colormap,
-            title=os.path.basename(args.input)
+            title=os.path.basename(args.input),
+            jpeg_quality=args.jpeg_quality,
+            png_compression=args.png_compression
         )
         print(f"-> Saved {ffile}")
 
