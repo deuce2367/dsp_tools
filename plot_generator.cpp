@@ -248,7 +248,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
 
     // Draw Labels
     if (draw_labels) {
-        int text_scale = std::max(1, full_width / 800);
+        int text_scale = std::max(1, std::min(full_width, full_height) / 800);
         
         // X-axis: Frequencies
         if (bandwidth_mhz > 0.0) {
@@ -437,7 +437,7 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     
     std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
     
-    int text_scale = std::max(1, out_width / 800);
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
     int margin_bottom = draw_labels ? 28 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;
@@ -549,7 +549,7 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     // Dark background
     std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
     
-    int text_scale = std::max(1, out_width / 800);
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
     int margin_bottom = draw_labels ? 28 * text_scale : 0;
     int margin_top = draw_labels ? 30 * text_scale : 0;

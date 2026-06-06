@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--zoom-bw", type=float, default=0.0, help="Zoom bandwidth in MHz")
     
     parser.add_argument("--averaging", type=int, default=4, help="Number of overlapping FFTs to average per row (default: 4)")
+    parser.add_argument("--stride-ratio", type=float, default=0.0, help="Time stride ratio relative to FFT window. E.g. 0.5 is 50% overlap. (default: auto-fit to height)")
     
     args = parser.parse_args()
     
@@ -83,6 +84,10 @@ def main():
     config.center_freq = args.center_freq
     config.zoom_center = args.zoom_center
     config.zoom_bw = args.zoom_bw
+    
+    if args.stride_ratio > 0.0:
+        config.step_size = max(1, int(config.window_size * args.stride_ratio))
+    
     config.output_width = args.width
     config.output_height = args.height
     config.time_smoothing = args.averaging

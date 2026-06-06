@@ -25,14 +25,14 @@ int main(int argc, char** argv) {
     std::string out_format = "jpg";
     int jpeg_quality = 75;
     int png_compression = 8;
+    bool draw_grid = true;
+    bool draw_labels = true;
     std::string data_type = "float32";
-    bool peak_detection = false;
-    double peak_threshold = 15.0;
     
     int width = 512;
     int height = 512;
-    size_t fft_size = 2048;
-    size_t overlap = 512;
+    size_t fft_size = 512;
+    double stride_ratio = 0.0;
     std::string colormap = "gqrx";
 
     double center_freq = 0.0;
@@ -42,9 +42,6 @@ int main(int argc, char** argv) {
     double zoom_center = 0.0;
     double zoom_bw = 0.0;
     std::string window_type = "blackman-harris";
-    
-    bool draw_grid = true;
-    bool draw_labels = true;
     
     std::string font_path = "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf";
     
@@ -78,16 +75,13 @@ int main(int argc, char** argv) {
     app.add_option("--jpeg-quality", jpeg_quality, "JPEG compression quality from 1 to 100 (default: 75)")
         ->check(CLI::Range(1, 100));
 
-    app.add_option("--png-compression", png_compression, "PNG compression level from 0 (none) to 9 (max) (default: 8)")
-        ->check(CLI::Range(0, 9));
-
-    app.add_flag("--peak-detection", peak_detection, "Enable squelch signal detection output to CSV");
-    app.add_option("--peak-threshold", peak_threshold, "Signal detection threshold in dB above noise floor (default: 15.0)");
+    app.add_flag("--no-grid,!--grid", draw_grid, "Disable plotting grid lines");
+    app.add_flag("--no-labels,!--labels", draw_labels, "Disable plotting axis labels");
 
     app.add_option("--width", width, "Output image width in pixels (default: 512)");
     app.add_option("--height", height, "Output image height in pixels (default: 512)");
-    auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: auto based on width)");
-    auto opt_overlap = app.add_option("--overlap", overlap, "FFT window overlap in samples (default: 512). Controls time resolution stride.");
+    auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: 512)");
+    auto opt_stride = app.add_option("--stride-ratio", stride_ratio, "Time stride ratio relative to FFT window. E.g. 0.5 is 50% overlap, 1.25 leaves gaps (default: auto-fit to image height)");
     app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: gqrx)")
         ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"}));
     
@@ -102,8 +96,6 @@ int main(int argc, char** argv) {
     app.add_option("--zoom-bw", zoom_bw, "Zoom bandwidth in MHz (default: full bandwidth)");
     app.add_option("--window", window_type, "Window function: blackman-harris, hann, hamming, flattop, bartlett (default: blackman-harris)")->check(CLI::IsMember({"blackman-harris", "hann", "hamming", "flattop", "bartlett"}));
     
-    app.add_flag("--draw-grid", draw_grid, "Draw grid overlay on plots");
-    app.add_flag("--draw-labels", draw_labels, "Draw axis labels on plots");
     app.add_option("--font", font_path, "Path to TTF font file for scalable text (default: /usr/share/fonts/truetype/noto/NotoMono-Regular.ttf)");
     app.add_option("--min-db", min_db, "Minimum dB level for plotting (default: auto)");
     app.add_option("--max-db", max_db, "Maximum dB level for plotting (default: auto)");
@@ -268,7 +260,11 @@ int main(int argc, char** argv) {
         config.zoom_bw = zoom_bw;
         if (opt_fft_size->count() > 0) config.window_size = fft_size;
         else config.window_size = width;
-        if (opt_overlap->count() > 0) config.step_size = fft_size > overlap ? fft_size - overlap : 1;
+        config.output_height = height;
+        
+        if (opt_stride->count() > 0 && stride_ratio > 0.0) {
+            config.step_size = std::max<size_t>(1, fft_size * stride_ratio);
+        }
         else config.step_size = 0; // auto
         config.output_width = width;
         config.output_height = height;
@@ -377,42 +373,6 @@ int main(int argc, char** argv) {
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
         }
 
-        if (peak_detection && !spectrogram.empty() && !result.avg_fft.empty()) {
-            spdlog::stopwatch sw_peaks;
-            
-            // Calculate global noise floor using median of avg_fft
-            std::vector<double> sorted_avg = result.avg_fft;
-            std::sort(sorted_avg.begin(), sorted_avg.end());
-            double noise_floor = sorted_avg[sorted_avg.size() / 2];
-            
-            std::string csv_file = output_name + "_peaks.csv";
-            std::ofstream out_csv(csv_file);
-            out_csv << "Time_s,Freq_MHz,Power_dB\n";
-            
-            int num_rows = spectrogram.size();
-            int num_bins = spectrogram[0].size();
-            int detections = 0;
-            
-            for (int r = 0; r < num_rows; ++r) {
-                double time_s = result.original_start_time + (r * static_cast<double>(result.actual_step_size)) / fs;
-                
-                // Find local maxima in this row
-                for (int c = 1; c < num_bins - 1; ++c) {
-                    double val = spectrogram[r][c];
-                    if (val > noise_floor + peak_threshold) {
-                        if (val > spectrogram[r][c-1] && val > spectrogram[r][c+1]) {
-                            double freq_mhz = z_center - (result.actual_zoom_bw/2.0) + (c * result.actual_zoom_bw / num_bins);
-                            out_csv << std::fixed << std::setprecision(3) << time_s << "," 
-                                    << std::setprecision(6) << freq_mhz << "," 
-                                    << std::setprecision(1) << val << "\n";
-                            detections++;
-                        }
-                    }
-                }
-            }
-            spdlog::info("Detected {} peak events above {:.1f} dB threshold (Noise Floor: {:.1f} dB) in {:.5f} seconds. Saved to {}", 
-                         detections, peak_threshold, noise_floor, sw_peaks, csv_file);
-        }
 
         spdlog::info("Done! Process complete.");
         
