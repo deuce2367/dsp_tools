@@ -333,8 +333,8 @@ int main(int argc, char** argv) {
             spdlog::info("Generating Fast Waterfall {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
             
             double total_duration_sec = 0.0;
-            if (bandwidth > 0.0) {
-                total_duration_sec = spectrogram.size() * actual_step_size / (bandwidth * 1e6 * (format == "complex" ? 1.0 : 2.0));
+            if (file_sr > 0.0) {
+                total_duration_sec = spectrogram.size() * actual_step_size / file_sr;
             }
             
             double z_center = result.actual_zoom_center;

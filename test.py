@@ -27,7 +27,7 @@ def main():
     parser.add_argument("--jpeg-quality", type=int, default=90, help="JPEG quality 1-100 (default: 90)")
     parser.add_argument("--png-compression", type=int, default=8, help="PNG compression 0-9 (default: 8)")
     
-    parser.add_argument("-c", "--colormap", default="turbo", choices=["electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"], help="Colormap for waterfall (default: turbo)")
+    parser.add_argument("-c", "--colormap", default="gqrx", choices=["electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"], help="Colormap for waterfall (default: gqrx)")
     
     parser.add_argument("--width", type=int, default=512, help="Output image width")
     parser.add_argument("--height", type=int, default=512, help="Output image height")
@@ -125,11 +125,9 @@ def main():
     if args.plot_waterfall:
         wfile = out_base if args.output else f"{out_base}_waterfall.{args.out_format}"
         
-        bw = args.bandwidth if args.bandwidth > 0 else (sample_rate / 1e6)
         tot_dur = 0.0
-        if bw > 0:
-            factor = 1.0 if data_fmt == "complex" else 2.0
-            tot_dur = len(spectrogram) * result.actual_step_size / (bw * 1e6 * factor)
+        if sample_rate > 0:
+            tot_dur = len(spectrogram) * result.actual_step_size / sample_rate
             
         print(f"Generating Waterfall {wfile} (Range: {final_min_db:.1f} to {final_max_db:.1f} dB)...")
         dsp_plotter_py.PlotGenerator.generate_fast_waterfall(
