@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 # Suppress warnings from third-party libraries (KFR, spdlog, fmt)
 add_compile_options(-Wno-attributes)
 
@@ -92,8 +96,67 @@ target_link_libraries(dsp_plotter
     nlohmann_json::nlohmann_json
 )
 
+add_executable(scratch_test scratch_test.cpp)
+target_link_libraries(scratch_test PRIVATE kfr kfr_dft kfr_io kfr_dsp)
+target_compile_options(scratch_test PRIVATE -mavx2 -O3)
+
+
 target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)
 target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
+
+add_executable(dsp_resample
+    dsp_resample.cpp
+)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_resample PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+target_link_libraries(dsp_resample
+  PRIVATE
+    kfr
+    kfr_dsp
+    kfr_io
+    CLI11::CLI11
+    spdlog::spdlog
+)
+target_compile_options(dsp_resample PRIVATE -Wno-stringop-overflow)
+
+add_executable(dsp_filter
+    dsp_filter.cpp
+)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_filter PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+target_link_libraries(dsp_filter
+  PRIVATE
+    kfr
+    kfr_dsp
+    kfr_io
+    CLI11::CLI11
+    spdlog::spdlog
+)
+target_compile_options(dsp_filter PRIVATE -Wno-stringop-overflow)
+
+add_executable(dsp_tuner
+    dsp_tuner.cpp
+)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_tuner PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+target_link_libraries(dsp_tuner
+  PRIVATE
+    kfr
+    kfr_dsp
+    kfr_io
+    CLI11::CLI11
+    spdlog::spdlog
+)
+target_compile_options(dsp_tuner PRIVATE -Wno-stringop-overflow)
 
 # Python bindings
 pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)

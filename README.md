@@ -9,6 +9,10 @@ A high-performance C++ tool for generating FFT spectrum and waterfall image plot
 - **Blazing Fast**: Uses KFR for vectorized FFT operations and STB for rapid PNG and JPG encoding.
 - **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
+- **DSP Utilities**: Includes high-performance, standalone command-line tools for Bluefile signal processing:
+  - `dsp_resample`: Arbitrary interpolation/decimation using high-quality FIR polyphase filters.
+  - `dsp_filter`: Real/Complex FIR filtering (lowpass, highpass, bandpass, bandstop) with accurate group delay and timecode correction.
+  - `dsp_tuner`: Digital Down Converter (DDC) that automatically shifts target frequencies to baseband (0 Hz) and decimates to the optimal Nyquist bandwidth.
 - **Dynamic Zooming & Channelization**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution. The engine automatically mixes, FIR-filters, and decimates wideband streams on the fly to conserve memory and massively speed up processing!
 - **Multiple Windowing Functions**: Hann, Hamming, Blackman-Harris (default), Flattop, and Bartlett.
 - **Time/Frequency Slicing**: Process only a specific time duration instead of the entire file.
@@ -95,6 +99,45 @@ The plotter is 100% self-contained and bundles a high-quality embedded TrueType 
 However, you can still override the font choice by specifying a custom `.ttf` file:
 ```bash
 ./dsp_plotter -i my_recording.wav --font /path/to/custom_font.ttf
+```
+
+## DSP Command-Line Utilities
+
+This project also provides extremely fast, standalone C++ utilities for manipulating X-Midas Bluefiles. These utilities support both real and complex data, process files out-of-core using memory mapping, and perfectly preserve/correct timecodes.
+
+### 1. `dsp_tuner` (Digital Down Converter)
+Tunes to a target center frequency (shifting it to 0 Hz baseband) and optimally decimates the signal. The output sample rate is automatically set to the target bandwidth, guaranteeing an optimal anti-aliasing lowpass filter.
+```bash
+# Tunes to 1.5 MHz and extracts a 500 kHz bandwidth. 
+# Output will be automatically decimated to 500 kSps.
+./dsp_tuner -i input.prm -o tuned.prm -c 1500000 -b 500000
+```
+
+### 2. `dsp_resample`
+High-performance arbitrary sample rate converter for real and complex bluefiles.
+```bash
+# Resample to exactly 4.0 MHz (calculates interp/dec automatically)
+./dsp_resample -i input.prm -o resampled.prm -r 4000000
+
+# Specify exact interpolation and decimation factors manually
+./dsp_resample -i input.prm -o resampled.prm -I 4 -d 3
+```
+
+### 3. `dsp_filter`
+High-performance FIR filtering utility supporting lowpass, highpass, bandpass, and bandstop filters.
+
+**Filter Types Explained:**
+- **`lowpass`**: Keeps frequencies *below* a certain point and throws away the rest. Used to clean up a signal by removing high-frequency noise or static.
+- **`highpass`**: Keeps frequencies *above* a certain point. Useful for removing low-frequency hums (like a 60 Hz electrical hum) or DC offsets.
+- **`bandpass`**: Keeps frequencies *between* two points. Used to isolate a specific signal of interest (like tuning into a single radio station) and blocking everything else.
+- **`bandstop`** (also known as a notch filter): Blocks frequencies *between* two points but lets everything else pass. Useful for surgically removing a specific piece of interference from a wideband signal.
+
+```bash
+# Lowpass filter with a 500 kHz cutoff (keeps everything from 0 to 500 kHz)
+./dsp_filter -i input.prm -o filtered.prm -t lowpass --cutoff1 500000
+
+# Bandpass filter from 100 kHz to 400 kHz using 2047 taps
+./dsp_filter -i input.prm -o filtered.prm -t bandpass --cutoff1 100000 --cutoff2 400000 --taps 2047
 ```
 
 ## Acknowledgements & Third-Party Code

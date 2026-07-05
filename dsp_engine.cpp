@@ -63,22 +63,7 @@ void DspEngine::get_file_info(const std::string& filename, int& channels, double
         channels = fmt.channels;
         sample_rate = fmt.samplerate;
     } else if (is_blue) {
-        int fd = open(filename.c_str(), O_RDONLY);
-        if (fd < 0) throw std::runtime_error("Cannot open BLUE file: " + filename);
-        BlueHeader hdr;
-        if (read(fd, &hdr, sizeof(BlueHeader)) != sizeof(BlueHeader)) {
-            close(fd);
-            throw std::runtime_error("Invalid BLUE file size");
-        }
-        close(fd);
-        
-        if (strncmp(hdr.version, "BLUE", 4) != 0) {
-            throw std::runtime_error("Not a valid BLUE file");
-        }
-        
-        if (hdr.type != 1000) {
-            throw std::runtime_error("Only Type 1000 BLUE files are supported");
-        }
+        BlueHeader hdr = read_bluefile_header(filename);
         
         char f_size = hdr.format[0];
         char f_type = hdr.format[1];
@@ -103,34 +88,7 @@ void DspEngine::get_file_info(const std::string& filename, int& channels, double
     }
 }
 
-struct MmapHandle {
-    int fd = -1;
-    uint8_t* ptr = nullptr;
-    size_t size = 0;
-    
-    MmapHandle(const std::string& filename) {
-        fd = open(filename.c_str(), O_RDONLY);
-        if (fd == -1) throw std::runtime_error("Could not open file for mmap: " + filename);
-        
-        struct stat sb;
-        if (fstat(fd, &sb) == -1) {
-            close(fd);
-            throw std::runtime_error("Could not stat file: " + filename);
-        }
-        size = sb.st_size;
-        
-        ptr = static_cast<uint8_t*>(mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0));
-        if (ptr == MAP_FAILED) {
-            close(fd);
-            throw std::runtime_error("mmap failed for file: " + filename);
-        }
-    }
-    
-    ~MmapHandle() {
-        if (ptr && ptr != MAP_FAILED) munmap(ptr, size);
-        if (fd != -1) close(fd);
-    }
-};
+
 
 DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig& config) {
     StreamingResult result;

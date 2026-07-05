@@ -3,45 +3,14 @@
 #include <vector>
 #include <string>
 #include <kfr/base.hpp>
+#include "bluefile_io.hpp"
+
 class DspEngine {
 public:
     DspEngine(size_t fft_size);
     ~DspEngine();
 
-#pragma pack(push, 1)
-    struct BlueHeader {
-        char version[4];
-        char head_rep[4];
-        char data_rep[4];
-        int32_t detached;
-        int32_t protected_flag;
-        int32_t pipe;
-        int32_t ext_start;
-        int32_t ext_size;
-        double data_start;
-        double data_size;
-        int32_t type;
-        char format[2];
-        int16_t flagmask;
-        double timecode;
-        int16_t inlet;
-        int16_t outlets;
-        int32_t outmask;
-        int32_t pipeloc;
-        int32_t pipesize;
-        double in_byte;
-        double out_byte;
-        double outbytes[8];
-        int32_t keylength;
-        char keywords[92];
-        
-        // Adjunct (Offset 256)
-        double xstart;
-        double xdelta;
-        int32_t xunits;
-        char padding[232];
-    };
-#pragma pack(pop)
+
 
     struct StreamConfig {
         std::string filename;
