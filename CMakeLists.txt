@@ -158,6 +158,24 @@ target_link_libraries(dsp_tuner
 )
 target_compile_options(dsp_tuner PRIVATE -Wno-stringop-overflow)
 
+add_executable(dsp_format
+    dsp_format.cpp
+)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_format PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+target_link_libraries(dsp_format
+  PRIVATE
+    kfr
+    kfr_dsp
+    kfr_io
+    CLI11::CLI11
+    spdlog::spdlog
+)
+target_compile_options(dsp_format PRIVATE -Wno-stringop-overflow)
+
 # Python bindings
 pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")

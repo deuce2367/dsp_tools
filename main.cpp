@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: gqrx)")
         ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"}));
     
-    app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
+    auto opt_center_freq = app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
     app.add_option("--bandwidth", bandwidth, "Original bandwidth in MHz (for axis labels)");
     
     app.add_option("--start-time", start_time, "Start time to process in seconds");
@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
         
         // SigMF Intercept
         bool is_sigmf = false;
+        bool sigmf_set_center = false;
         if (input_file.size() > 11 && (input_file.substr(input_file.size() - 11) == ".sigmf-meta" || input_file.substr(input_file.size() - 11) == ".sigmf-data")) {
             is_sigmf = true;
             std::string meta_file = input_file.substr(0, input_file.size() - 11) + ".sigmf-meta";
@@ -207,9 +208,12 @@ int main(int argc, char** argv) {
                     }
                 }
                 
-                if (data.contains("captures") && data["captures"].is_array() && data["captures"].size() > 0) {
-                    auto& cap = data["captures"][0];
-                    if (cap.contains("core:frequency")) center_freq = cap["core:frequency"].get<double>() / 1e6;
+                if (data.contains("captures") && data.at("captures").is_array() && data.at("captures").size() > 0) {
+                    auto& cap = data.at("captures")[0];
+                    if (cap.contains("core:frequency")) {
+                        center_freq = cap.at("core:frequency").get<double>() / 1e6;
+                        sigmf_set_center = true;
+                    }
                 }
                 
                 input_file = data_file; // switch input to data file
@@ -234,6 +238,12 @@ int main(int argc, char** argv) {
             } else {
                 // raw fallback
                 if (bandwidth > 0.0) file_sr = bandwidth * 1e6;
+            }
+        }
+        
+        if (opt_center_freq->count() == 0) {
+            if (!sigmf_set_center && format == "real") {
+                center_freq = bandwidth / 4.0; // The true physical center of the 0 to Fs/2 band
             }
         }
         

@@ -13,6 +13,7 @@ A high-performance C++ tool for generating FFT spectrum and waterfall image plot
   - `dsp_resample`: Arbitrary interpolation/decimation using high-quality FIR polyphase filters.
   - `dsp_filter`: Real/Complex FIR filtering (lowpass, highpass, bandpass, bandstop) with accurate group delay and timecode correction.
   - `dsp_tuner`: Digital Down Converter (DDC) that automatically shifts target frequencies to baseband (0 Hz) and decimates to the optimal Nyquist bandwidth.
+  - `dsp_format`: Fast conversion between real and complex signals (Padding, Hilbert, Mag, Phase, I/Q) and numeric type casting.
 - **Dynamic Zooming & Channelization**: Select specific center frequencies and bandwidth limits to "zoom" into a narrow sliver of the spectrum at a very high resolution. The engine automatically mixes, FIR-filters, and decimates wideband streams on the fly to conserve memory and massively speed up processing!
 - **Multiple Windowing Functions**: Hann, Hamming, Blackman-Harris (default), Flattop, and Bartlett.
 - **Time/Frequency Slicing**: Process only a specific time duration instead of the entire file.
@@ -138,6 +139,40 @@ High-performance FIR filtering utility supporting lowpass, highpass, bandpass, a
 
 # Bandpass filter from 100 kHz to 400 kHz using 2047 taps
 ./dsp_filter -i input.prm -o filtered.prm -t bandpass --cutoff1 100000 --cutoff2 400000 --taps 2047
+```
+
+### 4. `dsp_format`
+High-performance formatting utility to convert between real (scalar) and complex data types, and to cast between primitive types (e.g., float to double or int16).
+
+#### Real to Complex Conversion (`--to-complex`)
+When converting a Real signal to Complex, you must specify a `--method`:
+* **`hilbert`**: Applies a Hilbert transform to mathematically eliminate all negative frequencies, yielding a true Analytic Signal. The signal remains at its original positive frequency. The output sample rate matches the input sample rate.
+* **`pack`**: Demodulates a passband signal centered at $F_s/4$ down to complex baseband (0 Hz) and halves the sample rate. This is ideal for quickly recovering complex IQ data from an IF-sampled real signal.
+* **`pad`**: Leaves the data completely unmodified by simply zeroing out the imaginary components ($Q=0$).
+
+#### Complex to Real Conversion (`--to-real`)
+When converting a Complex signal to Real, you must specify an `--extract` method:
+* **`unpack`**: Modulates a complex baseband signal up to a passband signal centered at $F_s/4$ (relative to the new sample rate). It automatically doubles the sample rate. This is the exact inverse of `--method pack`.
+* **`mag`**: Extracts the magnitude ($\sqrt{I^2 + Q^2}$) of each complex frame. Useful for AM demodulation.
+* **`phase`**: Extracts the phase ($\arctan(Q/I)$) of each complex frame. Useful for FM/PM demodulation.
+* **`i` / `q`**: Extracts only the real ($I$) or imaginary ($Q$) components, discarding the other.
+
+#### Examples
+```bash
+# Convert a real signal to an analytic complex signal using a Hilbert transform filter
+./dsp_format -i real.prm -o analytic.prm --to-complex --method hilbert
+
+# Demodulate a real passband signal (centered at Fs/4) to complex baseband (0 Hz)
+./dsp_format -i if_real.prm -o baseband.prm --to-complex --method pack
+
+# Modulate a complex baseband signal up to a real passband signal
+./dsp_format -i baseband.prm -o if_real.prm --to-real --extract unpack
+
+# Extract the magnitude from a complex signal (e.g., for AM demodulation)
+./dsp_format -i complex.prm -o magnitude.prm --to-real --extract mag
+
+# Cast a 32-bit float file (SF) to a 64-bit double file (SD)
+./dsp_format -i float.prm -o double.prm --cast D
 ```
 
 ## Acknowledgements & Third-Party Code
