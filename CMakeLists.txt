@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(dsp_plotter)
+project(dsp_tools VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -96,11 +96,6 @@ target_link_libraries(dsp_plotter
     nlohmann_json::nlohmann_json
 )
 
-add_executable(scratch_test scratch_test.cpp)
-target_link_libraries(scratch_test PRIVATE kfr kfr_dft kfr_io kfr_dsp)
-target_compile_options(scratch_test PRIVATE -mavx2 -O3)
-
-
 target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)
 target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
 
@@ -122,59 +117,33 @@ target_link_libraries(dsp_resample
 )
 target_compile_options(dsp_resample PRIVATE -Wno-stringop-overflow)
 
-add_executable(dsp_filter
-    dsp_filter.cpp
-)
-
+add_executable(dsp_filter dsp_filter.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_filter PUBLIC OpenMP::OpenMP_CXX)
 endif()
-
-target_link_libraries(dsp_filter
-  PRIVATE
-    kfr
-    kfr_dsp
-    kfr_io
-    CLI11::CLI11
-    spdlog::spdlog
-)
+target_link_libraries(dsp_filter PRIVATE kfr kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_filter PRIVATE -Wno-stringop-overflow)
 
-add_executable(dsp_tuner
-    dsp_tuner.cpp
-)
-
+add_executable(dsp_tuner dsp_tuner.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_tuner PUBLIC OpenMP::OpenMP_CXX)
 endif()
-
-target_link_libraries(dsp_tuner
-  PRIVATE
-    kfr
-    kfr_dsp
-    kfr_io
-    CLI11::CLI11
-    spdlog::spdlog
-)
+target_link_libraries(dsp_tuner PRIVATE kfr kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_tuner PRIVATE -Wno-stringop-overflow)
 
-add_executable(dsp_format
-    dsp_format.cpp
-)
-
+add_executable(dsp_format dsp_format.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_format PUBLIC OpenMP::OpenMP_CXX)
 endif()
-
-target_link_libraries(dsp_format
-  PRIVATE
-    kfr
-    kfr_dsp
-    kfr_io
-    CLI11::CLI11
-    spdlog::spdlog
-)
+target_link_libraries(dsp_format PRIVATE kfr kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_format PRIVATE -Wno-stringop-overflow)
+
+add_executable(dsp_whitener dsp_whitener.cpp)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_whitener PUBLIC OpenMP::OpenMP_CXX)
+endif()
+target_link_libraries(dsp_whitener PRIVATE kfr kfr_dft kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
+target_compile_options(dsp_whitener PRIVATE -Wno-stringop-overflow)
 
 # Python bindings
 pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)
