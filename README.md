@@ -57,15 +57,19 @@ Generates FFT spectrum and waterfall image plots from signals. It uses STB for r
 
 A two-stage time-domain and frequency-domain interference reduction tool. It features a Time-Domain Pulse Blanker to eradicate radar pulses, and a Frequency-Domain Spectral Whitener to crush persistent narrow-band interference (CW tones) using a dynamic spectral AGC.
 
-```bash
-# Apply a hybrid whitener/blanker using default settings (partial whitening)
-./dsp_whitener -i input.prm -o cleaned.prm
+It supports two modes:
+- **Compress Mode** (`--mode compress`): The default mode for visual plotting. Compresses the dynamic range of the magnitude spectrum using the `--strength` parameter.
+- **Leaky Griffiths Mode** (`--mode griffiths`): A mathematically rigorous Adaptive Interference Canceler (Transmultiplexer). Averages the power spectrum and applies a hard regularization threshold using `--excess_leak`, perfectly flattening signals for downstream DSP automated detection.
 
-# Increase sensitivity of the pulse blanker (blank any pulse 5x stronger than average)
-./dsp_whitener -i input.prm -o cleaned.prm --blank-threshold 5.0
+```bash
+# Apply a hybrid whitener/blanker using default compression mode for visualization
+./dsp_whitener -i input.prm -o cleaned.prm
 
 # Aggressively flatten the frequency spectrum (strength 1.0 = total flattening)
 ./dsp_whitener -i input.prm -o flattened.prm --strength 1.0
+
+# Apply a strict Leaky Griffiths Overwhitener with an exponential decay constant of 0.95 and a +5 dB leak threshold
+./dsp_whitener -i input.prm -o griffiths.prm --mode griffiths --exp_decay_constant 0.95 --excess_leak 5.0
 ```
 
 ### 3. `dsp_filter` (FIR Filtering Utility)

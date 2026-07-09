@@ -16,7 +16,7 @@ using namespace kfr;
 
 template <typename T>
 void process_whitener(const std::string& input_file, const std::string& output_file,
-                      size_t fft_size, double alpha, double blank_threshold, size_t blank_window, double output_gain, double strength) {
+                      size_t fft_size, double alpha, double blank_threshold, size_t blank_window, double output_gain, double strength, const std::string& mode, double excess_leak) {
     
     BlueHeader hdr = read_bluefile_header(input_file);
     MmapHandle mmap_in(input_file);
@@ -56,6 +56,7 @@ void process_whitener(const std::string& input_file, const std::string& output_f
     }
     
     std::vector<fbase> avg_mag(fft_size, 0.0);
+    std::vector<fbase> avg_power(fft_size, 0.0);
     bool mag_initialized = false;
     
     const fbase EPSILON = 1e-12;
@@ -182,14 +183,29 @@ void process_whitener(const std::string& input_file, const std::string& output_f
             plan_c->execute(c_out.data(), c_in.data(), temp_c.data());
             
             // Whiten
+            fbase leak_val = 0.0;
+            if (mode == "griffiths") {
+                fbase L_base = run_power / fft_size; // Average broadband power per bin
+                leak_val = L_base * std::pow(10.0, excess_leak / 10.0);
+            }
+            
             for (size_t i = 0; i < fft_size; ++i) {
                 fbase mag = kfr::cabs(c_out[i]);
-                if (!mag_initialized) avg_mag[i] = mag;
-                else avg_mag[i] = alpha * avg_mag[i] + (1.0 - alpha) * mag;
-                
-                fbase divisor = std::max(avg_mag[i], EPSILON);
-                if (strength != 1.0) divisor = std::pow(divisor, strength);
-                c_out[i] = c_out[i] / divisor;
+                if (mode == "compress") {
+                    if (!mag_initialized) avg_mag[i] = mag;
+                    else avg_mag[i] = alpha * avg_mag[i] + (1.0 - alpha) * mag;
+                    
+                    fbase divisor = std::max(avg_mag[i], EPSILON);
+                    if (strength != 1.0) divisor = std::pow(divisor, strength);
+                    c_out[i] = c_out[i] / divisor;
+                } else if (mode == "griffiths") {
+                    fbase p = mag * mag;
+                    if (!mag_initialized) avg_power[i] = p;
+                    else avg_power[i] = alpha * avg_power[i] + (1.0 - alpha) * p;
+                    
+                    fbase divisor = std::sqrt(avg_power[i] + leak_val);
+                    c_out[i] = c_out[i] / std::max(divisor, EPSILON);
+                }
             }
             mag_initialized = true;
             
@@ -224,15 +240,30 @@ void process_whitener(const std::string& input_file, const std::string& output_f
             plan_r->execute(c_out.data(), r_in.data(), temp_r.data());
             
             // Whiten (only positive frequencies up to Nyquist for Real FFT)
+            fbase leak_val = 0.0;
+            if (mode == "griffiths") {
+                fbase L_base = run_power / fft_size; // Average broadband power per bin
+                leak_val = L_base * std::pow(10.0, excess_leak / 10.0);
+            }
+            
             size_t bins = fft_size / 2 + 1;
             for (size_t i = 0; i < bins; ++i) {
                 fbase mag = kfr::cabs(c_out[i]);
-                if (!mag_initialized) avg_mag[i] = mag;
-                else avg_mag[i] = alpha * avg_mag[i] + (1.0 - alpha) * mag;
-                
-                fbase divisor = std::max(avg_mag[i], EPSILON);
-                if (strength != 1.0) divisor = std::pow(divisor, strength);
-                c_out[i] = c_out[i] / divisor;
+                if (mode == "compress") {
+                    if (!mag_initialized) avg_mag[i] = mag;
+                    else avg_mag[i] = alpha * avg_mag[i] + (1.0 - alpha) * mag;
+                    
+                    fbase divisor = std::max(avg_mag[i], EPSILON);
+                    if (strength != 1.0) divisor = std::pow(divisor, strength);
+                    c_out[i] = c_out[i] / divisor;
+                } else if (mode == "griffiths") {
+                    fbase p = mag * mag;
+                    if (!mag_initialized) avg_power[i] = p;
+                    else avg_power[i] = alpha * avg_power[i] + (1.0 - alpha) * p;
+                    
+                    fbase divisor = std::sqrt(avg_power[i] + leak_val);
+                    c_out[i] = c_out[i] / std::max(divisor, EPSILON);
+                }
             }
             mag_initialized = true;
             
@@ -291,16 +322,22 @@ int main(int argc, char** argv) {
     size_t blank_window = 1024;
     double output_gain = 0.0;
     double strength = 0.5; // Default to partial whitening
+    std::string mode = "compress";
+    double excess_leak = -100.0;
     
     app.add_option("-i,--input", input_file, "Input Bluefile (.prm)")->required()->check(CLI::ExistingFile);
     app.add_option("-o,--output", output_file, "Output Bluefile (.prm)")->required();
     
     app.add_option("--fft-size", fft_size, "FFT size for STFT (default: 4096)");
-    app.add_option("--alpha", alpha, "Exponential smoothing factor for spectrum [0.0 to 1.0) (default: 0.99)");
+    app.add_option("--alpha,--exp_decay_constant", alpha, "Exponential smoothing factor for spectrum [0.0 to 1.0) (default: 0.99)");
     app.add_option("--blank-threshold", blank_threshold, "Power multiplier threshold to trigger blanking. Set to 0 to disable blanking. (default: 10.0)");
     app.add_option("--blank-window", blank_window, "Rolling average window size for blanker (default: 1024)");
     app.add_option("--gain", output_gain, "Fixed output gain multiplier. Set to 0.0 for auto-restoration of original noise floor. (default: 0.0)");
-    app.add_option("--strength", strength, "Whitening strength from 0.0 (none) to 1.0 (full flattening). (default: 0.5)");
+    
+    // Mode specific options
+    app.add_option("--mode", mode, "Whitening mode: compress (default) or griffiths")->check(CLI::IsMember({"compress", "griffiths"}));
+    app.add_option("--strength", strength, "Whitening strength from 0.0 to 1.0 (only used in compress mode). (default: 0.5)");
+    app.add_option("--excess_leak", excess_leak, "Amount in dB to increase the calculated leak value (only used in griffiths mode). (default: -100.0)");
     
     CLI11_PARSE(app, argc, argv);
     
@@ -308,11 +345,11 @@ int main(int argc, char** argv) {
         BlueHeader hdr = read_bluefile_header(input_file);
         char in_type = hdr.format[1];
         
-        if (in_type == 'B') process_whitener<int8_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength);
-        else if (in_type == 'I') process_whitener<int16_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength);
-        else if (in_type == 'L') process_whitener<int32_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength);
-        else if (in_type == 'F') process_whitener<float>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength);
-        else if (in_type == 'D') process_whitener<double>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength);
+        if (in_type == 'B') process_whitener<int8_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+        else if (in_type == 'I') process_whitener<int16_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+        else if (in_type == 'L') process_whitener<int32_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+        else if (in_type == 'F') process_whitener<float>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+        else if (in_type == 'D') process_whitener<double>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
         else throw std::runtime_error("Unsupported input data type format");
     } catch (const std::exception& e) {
         spdlog::error("Error: {}", e.what());
