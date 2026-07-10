@@ -33,6 +33,23 @@ All core dependencies (KFR, spdlog, CLI11, stb) are automatically fetched and bu
 
 After compilation, the binaries will be located in the `build/` directory.
 
+### Testing
+
+The project uses Catch2 for unit testing. To run the tests, simply build the `dsp_tests` target and run it:
+
+```bash
+make dsp_tests
+./dsp_tests
+```
+
+If you wish to generate a code coverage report, run CMake with `-DDSP_TOOLS_COVERAGE=ON`:
+
+```bash
+cmake -DDSP_TOOLS_COVERAGE=ON ..
+make coverage
+```
+The HTML coverage report will be available in the `build/coverage/` directory.
+
 ## Tools Overview
 
 ### 1. `dsp_plotter` (High-Performance Spectral Plotter)

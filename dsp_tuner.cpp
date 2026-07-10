@@ -179,6 +179,7 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     spdlog::info("Tuning complete.");
 }
 
+#ifndef DSP_TOOLS_TEST_MODE
 int main(int argc, char** argv) {
     CLI::App app{"DSP Tuner for X-Midas Bluefiles\n"
                  "Digital Down Converter (DDC). Tunes to a target center frequency (shifting it to 0 Hz baseband) and optimally decimates the signal.\n"
@@ -234,3 +235,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif

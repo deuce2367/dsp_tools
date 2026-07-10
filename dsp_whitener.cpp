@@ -310,9 +310,9 @@ void process_whitener(const std::string& input_file, const std::string& output_f
     if (plan_c) delete plan_c;
 }
 
+#ifndef DSP_TOOLS_TEST_MODE
 int main(int argc, char** argv) {
-    CLI::App app{"DSP Whitener for X-Midas Bluefiles\n"
-                 "Flattens the frequency spectrum and dynamically blanks radar/pulse interference."};
+    CLI::App app{"DSP Whitener - Time-Domain Pulse Blanker and Frequency-Domain AGC / Transmultiplexer Interference Canceler"};
     
     std::string input_file;
     std::string output_file;
@@ -358,3 +358,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif

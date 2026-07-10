@@ -149,6 +149,7 @@ void filter_data(const std::string& input_file, const std::string& output_file, 
     spdlog::info("Filtering complete.");
 }
 
+#ifndef DSP_TOOLS_TEST_MODE
 int main(int argc, char** argv) {
     CLI::App app{"DSP Filter for X-Midas Bluefiles\n"
                  "High-performance FIR filtering utility supporting lowpass, highpass, bandpass, and bandstop filters.\n"
@@ -208,3 +209,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif

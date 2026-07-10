@@ -12,6 +12,8 @@ endif()
 # Suppress warnings from third-party libraries (KFR, spdlog, fmt)
 add_compile_options(-Wno-attributes)
 
+option(DSP_TOOLS_COVERAGE "Enable code coverage reporting" OFF)
+
 # Suppress deprecation warnings from third-party FetchContent modules globally
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
 
@@ -73,6 +75,16 @@ FetchContent_Declare(
   GIT_TAG        v2.11.1
 )
 FetchContent_MakeAvailable(pybind11)
+
+# Catch2
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG        v3.4.0
+)
+FetchContent_MakeAvailable(Catch2)
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(Catch)
 
 add_executable(dsp_plotter
     main.cpp
@@ -157,3 +169,34 @@ if(OpenMP_CXX_FOUND)
 endif()
 target_compile_options(dsp_plotter_py PRIVATE -Wno-stringop-overflow)
 target_include_directories(dsp_plotter_py PRIVATE ${stb_SOURCE_DIR})
+
+# ----------------- TESTS -----------------
+enable_testing()
+add_executable(dsp_tests
+    tests/test_main.cpp
+    tests/test_whitener.cpp
+    tests/test_filter.cpp
+    tests/test_tuner.cpp
+    tests/test_resample.cpp
+    tests/test_format.cpp
+)
+target_compile_definitions(dsp_tests PRIVATE DSP_TOOLS_TEST_MODE=1)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_tests PUBLIC OpenMP::OpenMP_CXX)
+endif()
+target_link_libraries(dsp_tests PRIVATE Catch2::Catch2WithMain kfr kfr_dft kfr_dsp kfr_io spdlog::spdlog CLI11::CLI11)
+target_compile_options(dsp_tests PRIVATE -Wno-stringop-overflow)
+catch_discover_tests(dsp_tests)
+
+if(DSP_TOOLS_COVERAGE)
+    target_compile_options(dsp_tests PRIVATE --coverage -O0 -g)
+    target_link_options(dsp_tests PRIVATE --coverage)
+    add_custom_target(coverage
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        COMMAND lcov --capture --directory . --output-file coverage.info --ignore-errors mismatch --ignore-errors unused
+        COMMAND lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/tests/*' --output-file coverage.info
+        COMMAND genhtml coverage.info --output-directory coverage
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Running tests and generating coverage report..."
+    )
+endif()

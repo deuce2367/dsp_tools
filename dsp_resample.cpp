@@ -174,6 +174,7 @@ void resample_data(const std::string& input_file, const std::string& output_file
     spdlog::info("Resampling complete.");
 }
 
+#ifndef DSP_TOOLS_TEST_MODE
 int main(int argc, char** argv) {
     CLI::App app{"DSP Resampler for X-Midas Bluefiles\n"
                  "High-performance tool to resample (interpolate and decimate) real and complex bluefiles.\n"
@@ -227,3 +228,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif

@@ -278,6 +278,7 @@ void dispatch_out(char out_type, const std::string& input_file, const std::strin
     else throw std::runtime_error("Unsupported output data type");
 }
 
+#ifndef DSP_TOOLS_TEST_MODE
 int main(int argc, char** argv) {
     CLI::App app{"DSP Format for X-Midas Bluefiles\n"
                  "Converts data formats between Real (Scalar) and Complex, and changes data types (e.g. float to double)."};
@@ -341,3 +342,4 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif
