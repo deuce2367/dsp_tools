@@ -170,6 +170,9 @@ This project relies on several fantastic open-source projects and code snippets:
 - **spdlog** (https://github.com/gabime/spdlog): Fast C++ logging library (MIT License).
 - **nlohmann_json** (https://github.com/nlohmann/json): JSON for Modern C++ (MIT License).
 - **pybind11** (https://github.com/pybind/pybind11): Seamless operability between C++11 and Python (BSD 3-Clause).
+- **FastAPI & Uvicorn** (https://fastapi.tiangolo.com/): High performance Python web framework used for the backend (MIT License).
+- **React & Vite** (https://react.dev/ / https://vitejs.dev/): Frontend UI library and next-generation frontend build tooling (MIT License).
+- **SigPlot** (https://github.com/LGSInnovations/sigplot): A web-based interactive signal plotting library by LGS Innovations for rendering complex DSP data and X-Midas Type 2000 bluefiles natively in the browser.
 
 ## Licensing
 
