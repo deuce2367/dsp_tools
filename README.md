@@ -50,8 +50,31 @@ make coverage
 ```
 The HTML coverage report will be available in the `build/coverage/` directory.
 
-## Tools Overview
+## Web Interface (Interactive GUI)
 
+This project includes a modern, browser-based web interface built with **React (Vite)**, **SigPlot**, and a **FastAPI** backend. It provides an interactive GUI to explore, upload, process, and dynamically plot files.
+
+### Building and Running the Web App
+
+You can easily deploy the web interface using Docker. The Dockerfile uses a multi-stage build to compile the C++ tools, bundle the React frontend, and launch the FastAPI server.
+
+```bash
+# 1. Build the Docker image
+docker build -t dsp_web .
+
+# 2. Run the container
+# We mount your local build directory to /app/data so you can drag and drop .prm files!
+docker run -p 8000:8000 -v $(pwd)/build:/app/data dsp_web
+```
+
+Once running, navigate to `http://localhost:8000` in your browser. 
+
+**Features:**
+- **Interactive Waterfall & Spectrum Plots**: Leverages `sigplot` to render backend `dsp_fft` and `dsp_psd` generated X-Midas `Type 2000` bluefiles for hyper-fast interactive canvas navigation (zoom, pan, gain adjustment).
+- **Static HD Plot Generator**: Export high-resolution JPEGs/PNGs via `dsp_plotter` directly from the UI.
+- **Dynamic DSP Adjustments**: Toggle colormaps (Jet, Grape, Turbo), configure FFT size & time-smoothing, and flip between Light and Dark themes.
+
+## Tools Overview
 ### 1. `dsp_plotter` (High-Performance Spectral Plotter)
 
 Generates FFT spectrum and waterfall image plots from signals. It uses STB for rapid PNG/JPG encoding and supports dynamic zooming, channelization, and bounding-box annotations.

@@ -41,7 +41,12 @@ struct BlueHeader {
     double xstart;
     double xdelta;
     int32_t xunits;
-    char padding[236];
+    int32_t subsize;
+    double ystart;
+    double ydelta;
+    int32_t yunits;
+    char padding[212];
+
 };
 static_assert(sizeof(BlueHeader) == 512, "BlueHeader must be exactly 512 bytes");
 #pragma pack(pop)
@@ -97,8 +102,8 @@ inline BlueHeader read_bluefile_header(const std::string& filename) {
     if (strncmp(hdr.version, "BLUE", 4) != 0) {
         throw std::runtime_error("Not a valid BLUE file");
     }
-    if (hdr.type != 1000) {
-        throw std::runtime_error("Only Type 1000 BLUE files are supported");
+    if (hdr.type != 1000 && hdr.type != 2000) {
+        throw std::runtime_error("Only Type 1000 and 2000 BLUE files are supported");
     }
     return hdr;
 }

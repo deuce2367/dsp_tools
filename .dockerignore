@@ -1,0 +1,8 @@
+build/
+web/frontend/node_modules/
+web/frontend/dist/
+__pycache__/
+*.prm
+*.bin
+*.wav
+.git/

@@ -40,7 +40,10 @@ void write_bluefile(const std::string& filename, const std::vector<T>& data, dou
     
     int fd = open(filename.c_str(), O_WRONLY | O_APPEND);
     if (fd >= 0) {
-        write(fd, data.data(), data.size() * sizeof(T));
+        if (write(fd, data.data(), data.size() * sizeof(T)) < 0) {
+            close(fd);
+            throw std::runtime_error("Failed to write to file.");
+        }
         close(fd);
     }
 }
