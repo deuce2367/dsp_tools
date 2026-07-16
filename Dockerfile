@@ -38,7 +38,7 @@ COPY --from=cpp-builder /app/build/dsp_tuner /app/build/dsp_tuner
 COPY --from=cpp-builder /app/build/dsp_resample /app/build/dsp_resample
 COPY --from=cpp-builder /app/build/dsp_whitener /app/build/dsp_whitener
 COPY --from=cpp-builder /app/build/dsp_format /app/build/dsp_format
-
+COPY --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
 # Copy frontend static build
 COPY --from=node-builder /app/dist /app/web/frontend/dist
 

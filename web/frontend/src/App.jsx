@@ -79,11 +79,12 @@ function App() {
     return isWidth ? ref.current.clientWidth : ref.current.clientHeight;
   };
 
-  const getComputedFftSize = (val, ref) => {
+  const getComputedFftSize = (val, ref, isInteractive = false) => {
     if (val !== 'auto' && val !== '') return Number(val);
-    if (!ref.current) return 1024;
+    if (!ref.current) return isInteractive ? 4096 : 1024;
     // Nearest power of 2 for FFT size based on panel width
-    return Math.pow(2, Math.round(Math.log2(ref.current.clientWidth)));
+    let base = Math.pow(2, Math.round(Math.log2(ref.current.clientWidth)));
+    return isInteractive ? base * 4 : base;
   };
 
   const handleStaticPlot = async (isFft) => {
@@ -91,6 +92,7 @@ function App() {
     try {
       const reqWidth = getComputedSize(width, staticPanelRef, true);
       const reqHeight = getComputedSize(height, staticPanelRef, false);
+      const reqWindowSize = getComputedFftSize(windowSize, staticPanelRef, false);
       const res = await fetch('/api/run/plot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,6 +102,7 @@ function App() {
           zoom_bw: 0,
           width: reqWidth,
           height: reqHeight,
+          window_size: reqWindowSize,
           smoothing: smoothing,
           colormap: colormap,
           plot_fft: isFft,
@@ -124,7 +127,7 @@ function App() {
   const handleInteractivePSD = async () => {
     setLoading(true);
     try {
-      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef);
+      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef, true);
       const res = await fetch('/api/run/psd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,7 +158,7 @@ function App() {
   const handleInteractiveFFT = async () => {
     setLoading(true);
     try {
-      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef);
+      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef, true);
       const res = await fetch('/api/run/fft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +211,7 @@ function App() {
             </div>
           </div>
           <div className="form-group">
-            <label>Center Frequency (Hz)</label>
+            <label>Center Frequency (MHz)</label>
             <input type="number" value={centerFreq} onChange={(e) => setCenterFreq(Number(e.target.value))} />
           </div>
           <div className="form-group" style={{display: 'flex', gap: '10px'}}>
@@ -292,11 +295,15 @@ function App() {
 
           <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <h2 style={{marginTop: 0, fontSize: '1.2rem'}}>Static Plot Output</h2>
-            <div ref={staticPanelRef} style={{flex: 1, position: 'relative', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
+            <div ref={staticPanelRef} style={{flex: 1, position: 'relative', minHeight: '200px', overflow: 'hidden'}}>
               {imagePlot ? (
-                <img src={imagePlot} alt="DSP Plotter Output" style={{width: '100%', height: '100%', objectFit: 'contain', border: '1px solid var(--border-color)', borderRadius: '4px'}} />
+                <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0}}>
+                  <img src={imagePlot} alt="DSP Plotter Output" style={{width: '100%', height: '100%', objectFit: 'fill', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box'}} />
+                </div>
               ) : (
-                <p style={{margin: 0}}>Select static plot to view image.</p>
+                <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                  <p style={{margin: 0}}>Select static plot to view image.</p>
+                </div>
               )}
             </div>
           </div>

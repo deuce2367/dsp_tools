@@ -213,6 +213,21 @@ static void save_image(const std::string& filename, int width, int height, const
     }
 }
 
+static void stbi_write_mem_func(void *context, void *data, int size) {
+    std::vector<uint8_t>* vec = static_cast<std::vector<uint8_t>*>(context);
+    uint8_t* ptr = static_cast<uint8_t*>(data);
+    vec->insert(vec->end(), ptr, ptr + size);
+}
+
+static void save_image_mem(std::vector<uint8_t>& out_buffer, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int jpeg_quality, int png_compression) {
+    if (format == "jpg" || format == "jpeg") {
+        stbi_write_jpg_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), jpeg_quality);
+    } else {
+        stbi_write_png_compression_level = png_compression;
+        stbi_write_png_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), width * 3);
+    }
+}
+
 static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_width, int full_height, 
                                int plot_x, int plot_y, int plot_w, int plot_h,
                                double center_freq_mhz, double bandwidth_mhz, 
@@ -608,4 +623,175 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     }
 
     save_image(output_filename, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
+}
+
+void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<double>>& spectrogram_db,
+                                            std::vector<uint8_t>& out_buffer,
+                                            int out_width, int out_height,
+                                            const std::string& colormap,
+                                            double min_db, double max_db,
+                                            double center_freq_mhz, double bandwidth_mhz,
+                                            const std::string& start_time_iso, double total_duration_sec,
+                                            bool draw_grid, bool draw_labels,
+                                            const std::string& out_format,
+                                            int num_x_ticks, int num_y_ticks,
+                                            const std::string& title,
+                                            int jpeg_quality,
+                                            int png_compression,
+                                            const std::string& font_path,
+                                            double box_start_time, double box_duration,
+                                            double box_center_freq, double box_bw,
+                                            const std::string& box_color) {
+    if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
+    
+    int data_time_steps = spectrogram_db.size();
+    int data_freq_bins = spectrogram_db[0].size();
+    
+    std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
+    
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
+    int margin_left = draw_labels ? 50 * text_scale : 0;
+    int margin_bottom = draw_labels ? 28 * text_scale : 0;
+    int margin_top = draw_labels ? 30 * text_scale : 0;
+    int margin_right = draw_labels ? (!colormap.empty() ? 45 * text_scale : 25 * text_scale) : 0;
+    
+    int plot_x = margin_left;
+    int plot_y = margin_top;
+    int plot_w = out_width - margin_left - margin_right;
+    int plot_h = out_height - margin_top - margin_bottom;
+    
+    for (int y = 0; y < plot_h; ++y) {
+        int data_y = y * data_time_steps / plot_h;
+        for (int x = 0; x < plot_w; ++x) {
+            int data_x = x * data_freq_bins / plot_w;
+            
+            double db_val = spectrogram_db[data_y][data_x];
+            RGB color;
+            if (db_val <= min_db) {
+                color = {0, 0, 0}; // Black background
+            } else {
+                float norm_val = static_cast<float>((db_val - min_db) / (max_db - min_db));
+                norm_val = std::clamp(norm_val, 0.0f, 1.0f);
+                
+                if (colormap == "electric") color = Colormap::get_electric(norm_val);
+                else if (colormap == "gqrx") color = Colormap::get_gqrx(norm_val);
+                else if (colormap == "websdr") color = Colormap::get_websdr(norm_val);
+                else if (colormap == "pablo") color = Colormap::get_pablo(norm_val);
+                else if (colormap == "turbo") color = Colormap::get_turbo(norm_val);
+                else if (colormap == "frog") color = Colormap::get_frog(norm_val);
+                else if (colormap == "grape") color = Colormap::get_grape(norm_val);
+                else if (colormap == "jet") color = Colormap::get_jet(norm_val);
+                else color = Colormap::get_turbo(norm_val);
+            }
+            set_pixel(pixels, out_width, out_height, plot_x + x, plot_y + y, color);
+        }
+    }
+    
+    if (box_start_time >= 0 && box_duration > 0 && box_bw > 0) {
+        int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
+        int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
+        double freq_min = center_freq_mhz - bandwidth_mhz / 2.0;
+        double box_freq_min = box_center_freq - box_bw / 2.0;
+        double box_freq_max = box_center_freq + box_bw / 2.0;
+        int start_x = plot_x + static_cast<int>((box_freq_min - freq_min) / bandwidth_mhz * plot_w);
+        int end_x = plot_x + static_cast<int>((box_freq_max - freq_min) / bandwidth_mhz * plot_w);
+        start_x = std::clamp(start_x, plot_x, plot_x + plot_w - 1);
+        end_x = std::clamp(end_x, plot_x, plot_x + plot_w - 1);
+        start_y = std::clamp(start_y, plot_y, plot_y + plot_h - 1);
+        end_y = std::clamp(end_y, plot_y, plot_y + plot_h - 1);
+        RGB color = {255, 0, 0};
+        if (box_color == "green") color = {0, 255, 0};
+        else if (box_color == "blue") color = {0, 100, 255};
+        else if (box_color == "yellow") color = {255, 255, 0};
+        else if (box_color == "white") color = {255, 255, 255};
+        else if (box_color == "cyan") color = {0, 255, 255};
+        else if (box_color == "magenta") color = {255, 0, 255};
+        else if (box_color == "black") color = {0, 0, 0};
+        int outline_thickness = std::max(1, out_width / 500);
+        for (int y = start_y; y <= end_y; ++y) {
+            for (int x = start_x; x <= end_x; ++x) {
+                bool is_edge = (x < start_x + outline_thickness || x > end_x - outline_thickness || 
+                                y < start_y + outline_thickness || y > end_y - outline_thickness);
+                size_t idx = (y * out_width + x) * 3;
+                if (is_edge) {
+                    pixels[idx] = color.r; pixels[idx + 1] = color.g; pixels[idx + 2] = color.b;
+                } else {
+                    pixels[idx] = static_cast<unsigned char>(pixels[idx] * 0.7 + color.r * 0.3);
+                    pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * 0.7 + color.g * 0.3);
+                    pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * 0.7 + color.b * 0.3);
+                }
+            }
+        }
+    }
+    
+    draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                       center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
+                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path);
+    save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
+}
+
+void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& frequency_bins,
+                                           const std::vector<double>& magnitude_db,
+                                           std::vector<uint8_t>& out_buffer,
+                                           int out_width, int out_height,
+                                           double min_db, double max_db,
+                                           double center_freq_mhz, double bandwidth_mhz,
+                                           bool draw_grid, bool draw_labels,
+                                           const std::string& out_format,
+                                           int num_x_ticks, int num_y_ticks,
+                                           const std::string& title,
+                                           int jpeg_quality,
+                                           int png_compression,
+                                           const std::string& colormap_name,
+                                           const std::string& font_path) {
+    if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
+    int margin_left = draw_labels ? 50 * text_scale : 0;
+    int margin_bottom = draw_labels ? 28 * text_scale : 0;
+    int margin_top = draw_labels ? 30 * text_scale : 0;
+    int margin_right = draw_labels ? 25 * text_scale : 0;
+    int plot_x = margin_left;
+    int plot_y = margin_top;
+    int plot_w = out_width - margin_left - margin_right;
+    int plot_h = out_height - margin_top - margin_bottom;
+
+    draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                       center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path);
+
+    auto get_cmap_color = [&](float norm) -> RGB {
+        if (colormap_name == "electric") return Colormap::get_electric(norm);
+        if (colormap_name == "gqrx") return Colormap::get_gqrx(norm);
+        if (colormap_name == "websdr") return Colormap::get_websdr(norm);
+        if (colormap_name == "pablo") return Colormap::get_pablo(norm);
+        if (colormap_name == "turbo") return Colormap::get_turbo(norm);
+        if (colormap_name == "frog") return Colormap::get_frog(norm);
+        if (colormap_name == "grape") return Colormap::get_grape(norm);
+        if (colormap_name == "jet") return Colormap::get_jet(norm);
+        return Colormap::get_turbo(norm); 
+    };
+
+    int prev_x = -1;
+    int prev_y = -1;
+    int data_bins = magnitude_db.size();
+    for (int x = 0; x < plot_w; ++x) {
+        int bin_idx = x * data_bins / plot_w;
+        double db_val = magnitude_db[bin_idx];
+        float norm_val = static_cast<float>((db_val - min_db) / (max_db - min_db));
+        norm_val = std::clamp(norm_val, 0.0f, 1.0f);
+        int y = plot_h - 1 - static_cast<int>(norm_val * (plot_h - 1));
+        RGB current_color = get_cmap_color(norm_val);
+        if (x > 0) {
+            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, current_color);
+        }
+        for (int fy = y + 1; fy < plot_h; ++fy) {
+            float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
+            RGB fill_color = get_cmap_color(norm_fy);
+            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+        }
+        prev_x = x;
+        prev_y = y;
+    }
+    save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }

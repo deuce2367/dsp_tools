@@ -2,6 +2,7 @@
 #include <pybind11/stl.h>
 #include "dsp_engine.hpp"
 #include "plot_generator.hpp"
+#include "bluefile_io.hpp"
 
 namespace py = pybind11;
 
@@ -68,4 +69,146 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
             py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
             py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet", py::arg("font_path") = "");
+
+    m.def("run_fft_pipeline", [](const std::string& input_file, 
+                                 double center_freq, double zoom_center, double zoom_bw, 
+                                 double start_time, double duration, size_t window_size, int smoothing) {
+        DspEngine engine(window_size);
+        DspEngine::StreamConfig config;
+        config.filename = input_file;
+        int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
+        config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
+        config.window_size = window_size; config.time_smoothing = smoothing;
+        double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
+        config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
+        
+        auto result = engine.process_file_streaming(config);
+        
+        const std::vector<double>& out_data = result.avg_fft;
+        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
+        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        hdr.type = 1000; hdr.format[0] = 'S'; hdr.format[1] = 'F'; 
+        hdr.timecode = result.original_start_time; hdr.data_start = 512.0; hdr.data_size = out_data.size() * sizeof(float);
+        hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0); hdr.xdelta = result.actual_zoom_bw / out_data.size(); hdr.xunits = 2;
+        
+        std::string buffer;
+        buffer.reserve(sizeof(BlueHeader) + out_data.size() * sizeof(float));
+        buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
+        
+        std::vector<float> out_f(out_data.size());
+        for (size_t i = 0; i < out_data.size(); ++i) out_f[i] = static_cast<float>(out_data[i]);
+        buffer.append(reinterpret_cast<const char*>(out_f.data()), out_f.size() * sizeof(float));
+        
+        return py::bytes(buffer);
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"));
+
+    m.def("run_psd_pipeline", [](const std::string& input_file, 
+                                 double center_freq, double zoom_center, double zoom_bw, 
+                                 double start_time, double duration, size_t window_size, int smoothing) {
+        DspEngine engine(window_size);
+        DspEngine::StreamConfig config;
+        config.filename = input_file;
+        int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
+        config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
+        config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
+        double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
+        config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
+        
+        auto result = engine.process_file_streaming(config);
+        
+        if (result.spectrogram.empty()) throw std::runtime_error("No PSD data generated");
+        size_t frames = result.spectrogram.size(); size_t frame_size = result.spectrogram[0].size();
+        size_t total_elements = frames * frame_size;
+        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
+        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        hdr.type = 2000; hdr.format[0] = 'S'; hdr.format[1] = 'F'; 
+        hdr.timecode = result.original_start_time; hdr.data_start = 512.0; hdr.data_size = total_elements * sizeof(float);
+        hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0); hdr.xdelta = result.actual_zoom_bw / frame_size; hdr.xunits = 2;
+        hdr.ystart = result.original_start_time; hdr.ydelta = static_cast<double>(result.actual_step_size) / config.sample_rate; hdr.yunits = 1;
+        hdr.subsize = static_cast<int32_t>(frame_size);
+        
+        std::string buffer;
+        buffer.reserve(sizeof(BlueHeader) + total_elements * sizeof(float));
+        buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
+        
+        for (const auto& row : result.spectrogram) {
+            std::vector<float> row_f(row.size());
+            for (size_t i = 0; i < row.size(); ++i) row_f[i] = static_cast<float>(row[i]);
+            buffer.append(reinterpret_cast<const char*>(row_f.data()), row_f.size() * sizeof(float));
+        }
+        
+        return py::bytes(buffer);
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"));
+
+    m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
+                                 double center_freq, double zoom_center, double zoom_bw, 
+                                 double start_time, double duration, size_t window_size, int smoothing,
+                                 bool plot_fft, bool plot_waterfall, const std::string& colormap, int width, int height) {
+        DspEngine engine(width);
+        DspEngine::StreamConfig config;
+        config.filename = input_file;
+        int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
+        config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
+        config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
+        double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
+        config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
+        config.output_width = width; config.output_height = height;
+        
+        auto result = engine.process_file_streaming(config);
+        
+        double actual_max_db = -1000.0;
+        double sum_db = 0.0; size_t count_db = 0;
+        if (!result.spectrogram.empty()) {
+            for (const auto& row : result.spectrogram) {
+                for (double val : row) {
+                    if (val > actual_max_db) actual_max_db = val;
+                    sum_db += val; count_db++;
+                }
+            }
+        }
+        double mean_db = count_db > 0 ? (sum_db / count_db) : -100.0;
+        double final_min_db = mean_db - 15.0;
+        double final_max_db = actual_max_db;
+
+        double total_duration_sec = (config.sample_rate > 0.0) ? result.spectrogram.size() * result.actual_step_size / config.sample_rate : 0.0;
+        double z_center = result.actual_zoom_center;
+        double fs = result.actual_zoom_bw;
+        
+        std::vector<double> freq_bins;
+        for (size_t i = 0; i < (size_t)width; ++i) {
+            freq_bins.push_back((z_center - fs/2.0) + (i * fs / width));
+        }
+
+        char start_time_buf[64];
+        snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", actual_start_time);
+        
+        std::vector<uint8_t> out_buffer;
+        
+        if (plot_waterfall && !result.spectrogram.empty()) {
+            PlotGenerator::generate_fast_waterfall_mem(result.spectrogram, out_buffer, width, height, colormap,
+                final_min_db, final_max_db, z_center, fs, std::string(start_time_buf), total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "");
+        } else if (plot_fft && !result.spectrogram.empty()) {
+            size_t num_frames = result.spectrogram.size();
+            size_t frame_size = result.spectrogram[0].size();
+            std::vector<double> avg_mag(frame_size, 0.0);
+            for (size_t r = 0; r < num_frames; ++r) {
+                for (size_t i = 0; i < frame_size; ++i) {
+                    avg_mag[i] += result.spectrogram[r][i];
+                }
+            }
+            for (size_t i = 0; i < frame_size; ++i) {
+                avg_mag[i] /= num_frames;
+            }
+            PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 10, "", 90, 8, colormap, "");
+        }
+        
+        std::string s_buf(out_buffer.begin(), out_buffer.end());
+        return py::bytes(s_buf);
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"));
 }

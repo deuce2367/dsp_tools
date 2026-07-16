@@ -12,6 +12,8 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark' }) => {
       sigplotInstance.current = new Plot(plotRef.current, {
         autohide_panes: true,
         autolink: false,
+        nopan: true,
+        hide_panning: true,
         colors: {
           bg: theme === 'dark' ? '#000000' : '#ffffff',
           fg: theme === 'dark' ? '#ffffff' : '#000000'

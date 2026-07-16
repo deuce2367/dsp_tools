@@ -42,7 +42,7 @@ public:
             {150, 0, 200},    // Bright Violet
             {220, 0, 255},    // Neon Purple
             {255, 100, 255},  // Lighter Hot Pink
-            {255, 255, 0},    // Yellow Burst
+            {0, 255, 255},    // Cyan Burst
             {255, 255, 255}   // Pure White
         };
         

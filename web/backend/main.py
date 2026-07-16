@@ -3,25 +3,25 @@ import uuid
 import glob
 import shutil
 from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import dsp_wrapper
 import time
+import asyncio
+import collections
 
 app = FastAPI(title="DSP Web Interface")
 
 DATA_DIR = os.getenv("DSP_DATA_DIR", "/home/apsmith/.gemini/antigravity/scratch/dsp_tools/build")
 
-def cleanup_old_files():
-    now = time.time()
-    for pattern in ["fft_*.prm", "psd_*.prm", "plot_*.jpg", "plot_*.png"]:
-        for f in glob.glob(os.path.join(DATA_DIR, pattern)):
-            if os.path.isfile(f) and os.stat(f).st_mtime < now - 300: # 5 mins old
-                try:
-                    os.remove(f)
-                except:
-                    pass
+memory_cache = collections.OrderedDict()
+
+def add_to_cache(key: str, data: bytes):
+    memory_cache[key] = data
+    # Evict oldest if we have more than 50 cached files
+    while len(memory_cache) > 50:
+        memory_cache.popitem(last=False)
 
 class FFTRequest(BaseModel):
     input_file: str
@@ -59,83 +59,90 @@ class PlotRequest(BaseModel):
     height: int = 512
 
 @app.post("/api/run/fft")
-def run_fft(req: FFTRequest):
-    cleanup_old_files()
+async def run_fft(req: FFTRequest):
     try:
         in_path = os.path.join(DATA_DIR, req.input_file)
         if not os.path.exists(in_path):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"fft_{uuid.uuid4().hex[:8]}.prm"
-        out_path = os.path.join(DATA_DIR, out_id)
-        dsp_wrapper.dsp_fft(
-            input_file=in_path,
-            output_file=out_path,
-            center_freq=req.center_freq,
-            zoom_center=req.zoom_center,
-            zoom_bw=req.zoom_bw,
-            start_time=req.start_time,
-            duration=req.duration,
-            window_size=req.window_size,
-            smoothing=req.smoothing
+        data = await asyncio.to_thread(
+            dsp_wrapper.run_fft,
+            in_path,
+            req.center_freq,
+            req.zoom_center,
+            req.zoom_bw,
+            req.start_time,
+            req.duration,
+            req.window_size,
+            req.smoothing
         )
+        add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/run/psd")
-def run_psd(req: PSDRequest):
-    cleanup_old_files()
+async def run_psd(req: PSDRequest):
     try:
         in_path = os.path.join(DATA_DIR, req.input_file)
         if not os.path.exists(in_path):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"psd_{uuid.uuid4().hex[:8]}.prm"
-        out_path = os.path.join(DATA_DIR, out_id)
-        dsp_wrapper.dsp_psd(
-            input_file=in_path,
-            output_file=out_path,
-            center_freq=req.center_freq,
-            zoom_center=req.zoom_center,
-            zoom_bw=req.zoom_bw,
-            start_time=req.start_time,
-            duration=req.duration,
-            window_size=req.window_size,
-            smoothing=req.smoothing
+        data = await asyncio.to_thread(
+            dsp_wrapper.run_psd,
+            in_path,
+            req.center_freq,
+            req.zoom_center,
+            req.zoom_bw,
+            req.start_time,
+            req.duration,
+            req.window_size,
+            req.smoothing
         )
+        add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/run/plot")
-def run_plot(req: PlotRequest):
-    cleanup_old_files()
-    out_id = f"plot_{uuid.uuid4().hex[:8]}.jpg"
-    out_path = os.path.join(DATA_DIR, out_id)
+async def run_plot(req: PlotRequest):
+    out_format = "png" if req.plot_fft else "jpg"
+    out_id = f"plot_{uuid.uuid4().hex[:8]}.{out_format}"
     in_path = os.path.join(DATA_DIR, req.input_file)
     try:
-        dsp_wrapper.dsp_plotter(
-            input_file=in_path,
-            output_image=out_path,
-            center_freq=req.center_freq,
-            zoom_center=req.zoom_center,
-            zoom_bw=req.zoom_bw,
-            start_time=req.start_time,
-            duration=req.duration,
-            plot_fft=req.plot_fft,
-            plot_waterfall=req.plot_waterfall,
-            colormap=req.colormap,
-            width=req.width,
-            height=req.height,
-            smoothing=req.smoothing
+        data = await asyncio.to_thread(
+            dsp_wrapper.run_plot,
+            in_path,
+            out_format,
+            req.center_freq,
+            req.zoom_center,
+            req.zoom_bw,
+            req.start_time,
+            req.duration,
+            req.window_size,
+            req.smoothing,
+            req.plot_fft,
+            req.plot_waterfall,
+            req.colormap,
+            req.width,
+            req.height
         )
+        add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/data/{filename}")
 def get_data(filename: str):
+    if filename in memory_cache:
+        data = memory_cache[filename]
+        media_type = "application/octet-stream"
+        if filename.endswith(".jpg"): media_type = "image/jpeg"
+        elif filename.endswith(".png"): media_type = "image/png"
+        return Response(content=data, media_type=media_type)
+        
     file_path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
