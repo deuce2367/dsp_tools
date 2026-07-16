@@ -3,6 +3,32 @@
 #include "dsp_engine.hpp"
 #include "plot_generator.hpp"
 #include "bluefile_io.hpp"
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <cmath>
+
+std::string format_timecode(double timecode) {
+    if (timecode > 1e8) {
+        time_t unix_time = static_cast<time_t>(timecode - 631152000.0);
+        struct tm* tm_info = gmtime(&unix_time);
+        if (tm_info) {
+            char buffer[64];
+            strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", tm_info);
+            double intpart;
+            double fractpart = modf(timecode, &intpart);
+            if (fractpart > 0.001) {
+                char frac_buf[16];
+                snprintf(frac_buf, sizeof(frac_buf), "%.3f", fractpart);
+                return std::string(buffer) + std::string(frac_buf).substr(1) + "Z";
+            }
+            return std::string(buffer) + "Z";
+        }
+    }
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%.2fs", timecode);
+    return std::string(buffer);
+}
 
 namespace py = pybind11;
 
@@ -185,14 +211,13 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             freq_bins.push_back((z_center - fs/2.0) + (i * fs / width));
         }
 
-        char start_time_buf[64];
-        snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", actual_start_time);
+        std::string start_time_str = format_timecode(actual_start_time);
         
         std::vector<uint8_t> out_buffer;
         
         if (plot_waterfall && !result.spectrogram.empty()) {
             PlotGenerator::generate_fast_waterfall_mem(result.spectrogram, out_buffer, width, height, colormap,
-                final_min_db, final_max_db, z_center, fs, std::string(start_time_buf), total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "");
+                final_min_db, final_max_db, z_center, fs, start_time_str, total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "");
         } else if (plot_fft && !result.spectrogram.empty()) {
             size_t num_frames = result.spectrogram.size();
             size_t frame_size = result.spectrogram[0].size();

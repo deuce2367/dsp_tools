@@ -90,7 +90,10 @@ void DspEngine::get_file_info(const std::string& filename, int& channels, double
 
 
 
-DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig& config) {
+DspEngine::StreamingResult DspEngine::process_file_streaming(const StreamConfig& config_in) {
+    StreamConfig config = config_in;
+    if (config.time_smoothing < 1) config.time_smoothing = 1;
+    
     StreamingResult result;
     
     // 1. Memory Map the file

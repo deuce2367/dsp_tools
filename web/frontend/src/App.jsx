@@ -1,18 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SigPlot from './components/SigPlot.jsx';
+import Slider from 'rc-slider';
+import 'rc-slider/assets/index.css';
 
 function App() {
   const [file, setFile] = useState('timecode.prm');
   const [availableFiles, setAvailableFiles] = useState([]);
   const [centerFreq, setCenterFreq] = useState(0);
-  const [windowSize, setWindowSize] = useState('auto');
-  const [smoothing, setSmoothing] = useState(1);
+  const [windowSize, setWindowSize] = useState(4096);
+  const [smoothing, setSmoothing] = useState(8);
   const [width, setWidth] = useState('auto');
   const [height, setHeight] = useState('auto');
   const [colormap, setColormap] = useState('jet');
+  const [sigplotColormap, setSigplotColormap] = useState(1);
+  const [fftColor, setFftColor] = useState('#00ff00');
   
-  const [zmin, setZmin] = useState('');
-  const [zmax, setZmax] = useState('');
+  const [zmin, setZmin] = useState(-80);
+  const [zmax, setZmax] = useState(-20);
+  const [gainBounds, setGainBounds] = useState([-150, 0]);
+  const [gainHover, setGainHover] = useState(false);
 
   const [imagePlot, setImagePlot] = useState('');
   const [sigplotUrl, setSigplotUrl] = useState('');
@@ -98,7 +104,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: file,
-          center_freq: centerFreq,
+          center_freq: Number(centerFreq),
           zoom_bw: 0,
           width: reqWidth,
           height: reqHeight,
@@ -133,7 +139,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: file,
-          center_freq: centerFreq,
+          center_freq: Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -164,7 +170,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: file,
-          center_freq: centerFreq,
+          center_freq: Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -184,6 +190,15 @@ function App() {
       alert("Error generating FFT: " + e);
     }
     setLoading(false);
+  };
+
+  const handleDataLoaded = (min_val, max_val) => {
+    // Round and add 20dB padding for slider bounds
+    const boundsMin = Math.floor(min_val - 20);
+    const boundsMax = Math.ceil(max_val + 20);
+    setGainBounds([boundsMin, boundsMax]);
+    // Don't auto-set zmin/zmax here, leave them empty to allow auto-scaling initially
+    // but the slider will display the bounds.
   };
 
   return (
@@ -212,16 +227,21 @@ function App() {
           </div>
           <div className="form-group">
             <label>Center Frequency (MHz)</label>
-            <input type="number" value={centerFreq} onChange={(e) => setCenterFreq(Number(e.target.value))} />
+            <input type="text" value={centerFreq} onChange={(e) => setCenterFreq(e.target.value)} />
           </div>
           <div className="form-group" style={{display: 'flex', gap: '10px'}}>
             <div style={{flex: 1}}>
               <label>FFT Size</label>
-              <input type="text" value={windowSize} onChange={(e) => setWindowSize(e.target.value)} placeholder="auto" />
+              <select value={windowSize} onChange={(e) => setWindowSize(e.target.value)}>
+                {[5,6,7,8,9,10,11,12,13,14,15,16,17].map(i => {
+                  const val = Math.pow(2, i);
+                  return <option key={val} value={val}>{val}</option>;
+                })}
+              </select>
             </div>
             <div style={{flex: 1}}>
-              <label>Smoothing</label>
-              <input type="number" value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} min="1" />
+              <label>Smoothing {smoothing > 0 ? `(${smoothing})` : '(Off)'}</label>
+              <input type="range" min="0" max="64" value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} style={{width: '100%', accentColor: 'var(--accent-color)'}} />
             </div>
           </div>
           
@@ -229,12 +249,34 @@ function App() {
           
           <div className="form-group" style={{display: 'flex', gap: '10px'}}>
             <div style={{flex: 1}}>
-              <label>Gain Min (zmin)</label>
-              <input type="number" value={zmin} onChange={(e) => setZmin(e.target.value)} placeholder="Auto" />
+              <label>Spectrum Color (1D)</label>
+              <select value={fftColor} onChange={(e) => setFftColor(e.target.value)}>
+                <option value="#00ff00">Green</option>
+                <option value="#00ffff">Cyan</option>
+                <option value="#ffff00">Yellow</option>
+                <option value="#ff00ff">Magenta</option>
+                <option value="#ffffff">White</option>
+                <option value="#ff0000">Red</option>
+              </select>
             </div>
             <div style={{flex: 1}}>
-              <label>Gain Max (zmax)</label>
-              <input type="number" value={zmax} onChange={(e) => setZmax(e.target.value)} placeholder="Auto" />
+              <label>Interactive Colormap (2D)</label>
+              <select value={sigplotColormap} onChange={(e) => setSigplotColormap(Number(e.target.value))}>
+                <option value={0}>Greyscale</option>
+                <option value={1}>Ramp Colormap</option>
+                <option value={2}>Color Wheel</option>
+                <option value={3}>Spectrum</option>
+                <option value={4}>calewhite</option>
+                <option value={5}>HotDesat</option>
+                <option value={6}>Sunset</option>
+                <option value={7}>Hot</option>
+                <option value={8}>Cold</option>
+                <option value={10}>BuGn</option>
+                <option value={11}>YlOrBr</option>
+                <option value={12}>YlGnBu</option>
+                <option value={13}>YlOrRd</option>
+                <option value={14}>GreyNRed</option>
+              </select>
             </div>
           </div>
           
@@ -284,12 +326,54 @@ function App() {
           
           <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <h2 style={{marginTop: 0, fontSize: '1.2rem'}}>Interactive SigPlot View</h2>
-            <div ref={interactivePanelRef} style={{flex: 1, position: 'relative', minHeight: '200px'}}>
-              {sigplotUrl ? (
-                <SigPlot dataUrl={sigplotUrl} type={sigplotType} zmin={zmin} zmax={zmax} theme={theme} />
-              ) : (
-                <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
-              )}
+            <div style={{flex: 1, display: 'flex', gap: '2px'}}>
+              <div ref={interactivePanelRef} style={{flex: 1, position: 'relative', minHeight: '200px'}}>
+                {sigplotUrl ? (
+                  <SigPlot dataUrl={sigplotUrl} type={sigplotType} zmin={zmin} zmax={zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} />
+                ) : (
+                  <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
+                )}
+              </div>
+              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '12px'}}>
+                <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: '#ffffff', fontWeight: 'bold'}}>Gain (dB)</div>
+              </div>
+              <div style={{width: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', margin: '30px 0'}} 
+                   onMouseEnter={() => setGainHover(true)} 
+                   onMouseLeave={() => setGainHover(false)}>
+                {gainHover && (
+                  <div style={{position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', background: 'var(--border-color)', padding: '2px 4px', borderRadius: '4px', fontSize: '0.7rem', whiteSpace: 'nowrap', zIndex: 50}}>
+                    {zmax === '' ? 'Auto' : zmax}
+                  </div>
+                )}
+                <div style={{flex: 1, margin: '0', width: '100%', display: 'flex', justifyContent: 'center'}}>
+                  <Slider 
+                    vertical 
+                    range 
+                    min={gainBounds[0]} 
+                    max={gainBounds[1]} 
+                    value={[
+                      zmin === '' ? gainBounds[0] + 10 : Number(zmin), 
+                      zmax === '' ? gainBounds[1] - 10 : Number(zmax)
+                    ]} 
+                    onChange={(val) => { setZmin(val[0]); setZmax(val[1]); }}
+                    handleStyle={[
+                      { width: 16, height: 16, borderRadius: 4, marginLeft: -4, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' },
+                      { width: 16, height: 16, borderRadius: 4, marginLeft: -4, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' }
+                    ]}
+                    activeHandleStyle={[
+                      { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 4, marginLeft: -4, zIndex: 100 },
+                      { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 4, marginLeft: -4, zIndex: 100 }
+                    ]}
+                    trackStyle={[{ backgroundColor: 'var(--accent-color)', width: 8, zIndex: 1 }]}
+                    railStyle={{ backgroundColor: 'var(--border-color)', width: 8, zIndex: 1 }}
+                  />
+                </div>
+                {gainHover && (
+                  <div style={{position: 'absolute', bottom: '-25px', left: '50%', transform: 'translateX(-50%)', background: 'var(--border-color)', padding: '2px 4px', borderRadius: '4px', fontSize: '0.7rem', whiteSpace: 'nowrap', zIndex: 50}}>
+                    {zmin === '' ? 'Auto' : zmin}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
