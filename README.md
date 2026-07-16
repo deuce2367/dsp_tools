@@ -56,6 +56,8 @@ This project includes a modern, browser-based web interface built with **React (
 
 ### Building and Running the Web App
 
+![Example Output](webapp.jpg)
+
 You can easily deploy the web interface using Docker. The Dockerfile uses a multi-stage build to compile the C++ tools, bundle the React frontend, and launch the FastAPI server.
 
 ```bash
