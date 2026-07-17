@@ -57,7 +57,8 @@ public:
                                         const std::string& font_path = "",
                                         double box_start_time = -1.0, double box_duration = 0.0,
                                         double box_center_freq = 0.0, double box_bw = 0.0,
-                                        const std::string& box_color = "red");
+                                        const std::string& box_color = "red",
+                                        const std::string& theme = "dark");
 
     // Fast FFT plot rendering to memory buffer
     static void generate_fast_fft_plot_mem(const std::vector<double>& frequency_bins,
@@ -73,5 +74,8 @@ public:
                                        int jpeg_quality = 90,
                                        int png_compression = 8,
                                        const std::string& colormap_name = "jet",
-                                       const std::string& font_path = "");
+                                       const std::string& font_path = "",
+                                       const std::string& theme = "dark",
+                                       const std::string& fill_mode = "gradient",
+                                       const std::string& fill_color_hex = "#00FF00");
 };

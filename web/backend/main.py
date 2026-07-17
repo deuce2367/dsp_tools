@@ -57,6 +57,9 @@ class PlotRequest(BaseModel):
     plot_waterfall: bool = True
     width: int = 1024
     height: int = 512
+    theme: str = "dark"
+    fill_mode: str = "gradient"
+    fill_color: str = "#00FF00"
 
 @app.post("/api/run/fft")
 async def run_fft(req: FFTRequest):
@@ -127,7 +130,10 @@ async def run_plot(req: PlotRequest):
             req.plot_waterfall,
             req.colormap,
             req.width,
-            req.height
+            req.height,
+            req.theme,
+            req.fill_mode,
+            req.fill_color
         )
         add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}

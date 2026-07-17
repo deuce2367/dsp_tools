@@ -9,8 +9,6 @@ function App() {
   const [centerFreq, setCenterFreq] = useState(0);
   const [windowSize, setWindowSize] = useState(4096);
   const [smoothing, setSmoothing] = useState(8);
-  const [width, setWidth] = useState('auto');
-  const [height, setHeight] = useState('auto');
   const [colormap, setColormap] = useState('jet');
   const [sigplotColormap, setSigplotColormap] = useState(1);
   const [fftColor, setFftColor] = useState('#00ff00');
@@ -25,6 +23,8 @@ function App() {
   const [sigplotType, setSigplotType] = useState('1D');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState('dark');
+  const [fillMode, setFillMode] = useState('gradient');
+  const [fillColor, setFillColor] = useState('#00ff00');
 
   const interactivePanelRef = useRef(null);
   const staticPanelRef = useRef(null);
@@ -79,12 +79,6 @@ function App() {
     setLoading(false);
   };
 
-  const getComputedSize = (val, ref, isWidth) => {
-    if (val !== 'auto' && val !== '') return Number(val);
-    if (!ref.current) return isWidth ? 1024 : 512;
-    return isWidth ? ref.current.clientWidth : ref.current.clientHeight;
-  };
-
   const getComputedFftSize = (val, ref, isInteractive = false) => {
     if (val !== 'auto' && val !== '') return Number(val);
     if (!ref.current) return isInteractive ? 4096 : 1024;
@@ -96,8 +90,6 @@ function App() {
   const handleStaticPlot = async (isFft) => {
     setLoading(true);
     try {
-      const reqWidth = getComputedSize(width, staticPanelRef, true);
-      const reqHeight = getComputedSize(height, staticPanelRef, false);
       const reqWindowSize = getComputedFftSize(windowSize, staticPanelRef, false);
       const res = await fetch('/api/run/plot', {
         method: 'POST',
@@ -106,13 +98,16 @@ function App() {
           input_file: file,
           center_freq: Number(centerFreq),
           zoom_bw: 0,
-          width: reqWidth,
-          height: reqHeight,
+          width: staticPanelRef.current ? staticPanelRef.current.clientWidth : 800,
+          height: staticPanelRef.current ? staticPanelRef.current.clientHeight : 600,
           window_size: reqWindowSize,
           smoothing: smoothing,
           colormap: colormap,
           plot_fft: isFft,
-          plot_waterfall: !isFft
+          plot_waterfall: !isFft,
+          theme: theme,
+          fill_mode: fillMode,
+          fill_color: fillColor
         })
       });
       const data = await res.json();
@@ -262,21 +257,36 @@ function App() {
             <div style={{flex: 1}}>
               <label>Interactive Colormap (2D)</label>
               <select value={sigplotColormap} onChange={(e) => setSigplotColormap(Number(e.target.value))}>
-                <option value={0}>Greyscale</option>
-                <option value={1}>Ramp Colormap</option>
-                <option value={2}>Color Wheel</option>
-                <option value={3}>Spectrum</option>
-                <option value={4}>calewhite</option>
-                <option value={5}>HotDesat</option>
-                <option value={6}>Sunset</option>
-                <option value={7}>Hot</option>
-                <option value={8}>Cold</option>
                 <option value={10}>BuGn</option>
-                <option value={11}>YlOrBr</option>
-                <option value={12}>YlGnBu</option>
-                <option value={13}>YlOrRd</option>
+                <option value={4}>calewhite</option>
+                <option value={8}>Cold</option>
+                <option value={2}>Color Wheel</option>
+                <option value={0}>Greyscale</option>
                 <option value={14}>GreyNRed</option>
+                <option value={7}>Hot</option>
+                <option value={5}>HotDesat</option>
+                <option value={1}>Ramp Colormap</option>
+                <option value={3}>Spectrum</option>
+                <option value={6}>Sunset</option>
+                <option value={12}>YlGnBu</option>
+                <option value={11}>YlOrBr</option>
+                <option value={13}>YlOrRd</option>
               </select>
+              <div style={{marginTop: '5px', height: '25px', borderRadius: '3px', background: 
+                sigplotColormap === 0 ? 'linear-gradient(to right, #000000, #ffffff)' :
+                (sigplotColormap === 1 || sigplotColormap === 3) ? 'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000, #800000)' :
+                sigplotColormap === 4 ? 'linear-gradient(to right, #ffffff, #000000)' :
+                sigplotColormap === 5 ? 'linear-gradient(to right, #000000, #880000, #ff8800, #ffffdd, #ffffff)' :
+                sigplotColormap === 6 ? 'linear-gradient(to right, #000000, #4400aa, #dd3344, #ffaa00, #ffffff)' :
+                sigplotColormap === 7 ? 'linear-gradient(to right, #000000, #ff0000, #ffff00, #ffffff)' :
+                sigplotColormap === 8 ? 'linear-gradient(to right, #000000, #0000ff, #00ffff, #ffffff)' :
+                sigplotColormap === 10 ? 'linear-gradient(to right, #e5f5f9, #99d8c9, #2ca25f)' :
+                sigplotColormap === 11 ? 'linear-gradient(to right, #fff7bc, #fec44f, #d95f0e)' :
+                sigplotColormap === 12 ? 'linear-gradient(to right, #edf8b1, #7fcdbb, #2c7fb8)' :
+                sigplotColormap === 13 ? 'linear-gradient(to right, #ffeda0, #feb24c, #f03b20)' :
+                sigplotColormap === 14 ? 'linear-gradient(to right, #000000, #888888, #ff0000)' :
+                'linear-gradient(to right, #000, #fff)'
+              }}></div>
             </div>
           </div>
           
@@ -290,27 +300,51 @@ function App() {
           <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Static Plot Options</h3>
           <div className="form-group" style={{display: 'flex', gap: '10px'}}>
             <div style={{flex: 1}}>
-              <label>Width</label>
-              <input type="text" value={width} onChange={(e) => setWidth(e.target.value)} placeholder="auto" />
-            </div>
-            <div style={{flex: 1}}>
-              <label>Height</label>
-              <input type="text" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="auto" />
-            </div>
-          </div>
-          <div className="form-group" style={{display: 'flex', gap: '10px'}}>
-            <div style={{flex: 1}}>
-              <label>Colormap</label>
-              <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-                <option value="jet">Jet</option>
-                <option value="gqrx">GQRX</option>
-                <option value="turbo">Turbo</option>
-                <option value="electric">Electric</option>
-                <option value="websdr">WebSDR</option>
-                <option value="pablo">Pablo</option>
-                <option value="frog">Frog</option>
-                <option value="grape">Grape</option>
+              <label>Fill Mode</label>
+              <select value={fillMode} onChange={(e) => setFillMode(e.target.value)}>
+                <option value="gradient">Gradient</option>
+                <option value="solid">Solid</option>
+                <option value="none">None</option>
               </select>
+              {fillMode !== 'gradient' ? (
+                <div style={{marginTop: '5px'}}>
+                  <input type="color" value={fillColor} onChange={(e) => setFillColor(e.target.value)} style={{width: '100%', height: '25px', border: 'none', padding: '0', background: 'transparent', cursor: 'pointer'}} />
+                </div>
+              ) : (
+                <div style={{marginTop: '5px', height: '25px', borderRadius: '3px', background: 
+                  colormap === 'jet' ? 'linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000)' :
+                  colormap === 'electric' ? 'linear-gradient(to right, #000000, #000064, #0000ff, #00ffff, #ffff00, #ffffff)' :
+                  colormap === 'turbo' ? 'linear-gradient(to right, #30123b, #4288eb, #28fb95, #a4fc3c, #f39913, #d12907, #7a0403)' :
+                  colormap === 'pablo' ? 'linear-gradient(to right, #000000, #0000ff, #00ff00, #ffff00, #ff0000, #ffffff)' :
+                  colormap === 'frog' ? 'linear-gradient(to right, #000000, #005000, #00b400, #00ff00, #ffff00, #ff0000, #ffffff)' :
+                  colormap === 'grape' ? 'linear-gradient(to right, #000000, #3c0078, #9600c8, #dc00ff, #ff64ff, #b4ff00, #ffffff)' :
+                  colormap === 'gqrx' ? 'linear-gradient(to right, #000000, #000096, #0096ff, #ffff00, #ff0000, #ffffff)' :
+                  colormap === 'websdr' ? 'linear-gradient(to right, #000000, #500096, #ff0000, #ffff00, #ffffff)' : '#888'
+                }}></div>
+              )}
+            </div>
+            <div style={{flex: 1}}>
+              <label>Color Map</label>
+              <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
+                <option value="electric">Electric</option>
+                <option value="frog">Frog</option>
+                <option value="gqrx">GQRX</option>
+                <option value="grape">Grape</option>
+                <option value="jet">Jet</option>
+                <option value="pablo">Pablo</option>
+                <option value="turbo">Turbo</option>
+                <option value="websdr">WebSDR</option>
+              </select>
+              <div style={{marginTop: '5px', height: '25px', borderRadius: '3px', background: 
+                colormap === 'jet' ? 'linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000)' :
+                colormap === 'electric' ? 'linear-gradient(to right, #000000, #000064, #0000ff, #00ffff, #ffff00, #ffffff)' :
+                colormap === 'turbo' ? 'linear-gradient(to right, #30123b, #4288eb, #28fb95, #a4fc3c, #f39913, #d12907, #7a0403)' :
+                colormap === 'pablo' ? 'linear-gradient(to right, #000000, #0000ff, #00ff00, #ffff00, #ff0000, #ffffff)' :
+                colormap === 'frog' ? 'linear-gradient(to right, #000000, #005000, #00b400, #00ff00, #ffff00, #ff0000, #ffffff)' :
+                colormap === 'grape' ? 'linear-gradient(to right, #000000, #3c0078, #9600c8, #dc00ff, #ff64ff, #b4ff00, #ffffff)' : 
+                colormap === 'gqrx' ? 'linear-gradient(to right, #000000, #000096, #0096ff, #ffff00, #ff0000, #ffffff)' :
+                colormap === 'websdr' ? 'linear-gradient(to right, #000000, #500096, #ff0000, #ffff00, #ffffff)' : '#888'
+              }}></div>
             </div>
           </div>
 

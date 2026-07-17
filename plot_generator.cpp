@@ -237,8 +237,10 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                int num_x_ticks, int num_y_ticks,
                                const std::string& colormap = "",
                                const std::string& title = "",
-                               const std::string& font_path = "") {
-    RGB axis_color = {200, 200, 200};
+                               const std::string& font_path = "",
+                               const std::string& theme = "dark") {
+    RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{200, 200, 200};
+    RGB grid_color = (theme == "light") ? RGB{0, 0, 0} : RGB{255, 255, 255};
     
     // Draw Grid and Box
     draw_line(pixels, full_width, full_height, plot_x, plot_y, plot_x + plot_w - 1, plot_y, axis_color);
@@ -250,13 +252,13 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
         for (int i = 1; i < num_x_ticks; ++i) {
             int x = plot_x + plot_w * i / num_x_ticks;
             for (int y = plot_y; y < plot_y + plot_h; ++y) {
-                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.2f);
+                blend_pixel(pixels, full_width, full_height, x, y, grid_color, 0.2f);
             }
         }
         for (int i = 1; i < num_y_ticks; ++i) {
             int y = plot_y + plot_h * i / num_y_ticks;
             for (int x = plot_x; x < plot_x + plot_w; ++x) {
-                blend_pixel(pixels, full_width, full_height, x, y, {255, 255, 255}, 0.2f);
+                blend_pixel(pixels, full_width, full_height, x, y, grid_color, 0.2f);
             }
         }
     }
@@ -641,13 +643,14 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
                                             const std::string& font_path,
                                             double box_start_time, double box_duration,
                                             double box_center_freq, double box_bw,
-                                            const std::string& box_color) {
+                                            const std::string& box_color,
+                                            const std::string& theme) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
     int data_freq_bins = spectrogram_db[0].size();
-    
-    std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
+    unsigned char bg = (theme == "light") ? 255 : 10;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     
     int text_scale = std::max(1, std::min(out_width, out_height) / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
@@ -726,7 +729,7 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
-                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path);
+                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path, theme);
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
@@ -743,9 +746,13 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
                                            int jpeg_quality,
                                            int png_compression,
                                            const std::string& colormap_name,
-                                           const std::string& font_path) {
+                                           const std::string& font_path,
+                                           const std::string& theme,
+                                           const std::string& fill_mode,
+                                           const std::string& fill_color_hex) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
-    std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
+    unsigned char bg = (theme == "light") ? 255 : 10;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     int text_scale = std::max(1, std::min(out_width, out_height) / 800);
     int margin_left = draw_labels ? 50 * text_scale : 0;
     int margin_bottom = draw_labels ? 28 * text_scale : 0;
@@ -758,7 +765,7 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
 
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
-                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path);
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme);
 
     auto get_cmap_color = [&](float norm) -> RGB {
         if (colormap_name == "electric") return Colormap::get_electric(norm);
@@ -772,6 +779,17 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         return Colormap::get_turbo(norm); 
     };
 
+    auto parse_hex_color = [](const std::string& hex) -> RGB {
+        if (hex.size() == 7 && hex[0] == '#') {
+            int r, g, b;
+            if (sscanf(hex.c_str() + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                return RGB{(unsigned char)r, (unsigned char)g, (unsigned char)b};
+            }
+        }
+        return RGB{0, 255, 0};
+    };
+    RGB custom_fill_color = parse_hex_color(fill_color_hex);
+
     int prev_x = -1;
     int prev_y = -1;
     int data_bins = magnitude_db.size();
@@ -782,13 +800,17 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         norm_val = std::clamp(norm_val, 0.0f, 1.0f);
         int y = plot_h - 1 - static_cast<int>(norm_val * (plot_h - 1));
         RGB current_color = get_cmap_color(norm_val);
+        RGB line_color = (fill_mode != "gradient") ? custom_fill_color : current_color;
+
         if (x > 0) {
-            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, current_color);
+            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
         }
-        for (int fy = y + 1; fy < plot_h; ++fy) {
-            float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
-            RGB fill_color = get_cmap_color(norm_fy);
-            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+        if (fill_mode != "none") {
+            for (int fy = y + 1; fy < plot_h; ++fy) {
+                float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
+                RGB fill_color = (fill_mode == "solid") ? custom_fill_color : get_cmap_color(norm_fy);
+                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+            }
         }
         prev_x = x;
         prev_y = y;

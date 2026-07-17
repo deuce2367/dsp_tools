@@ -28,13 +28,13 @@ def run_psd(input_file: str, center_freq: float, zoom_center: float, zoom_bw: fl
     except Exception as e:
         raise RuntimeError(f"PSD Pipeline failed: {e}")
 
-def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, plot_fft: bool, plot_waterfall: bool, colormap: str, width: int, height: int) -> bytes:
+def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, plot_fft: bool, plot_waterfall: bool, colormap: str, width: int, height: int, theme: str = "dark", fill_mode: str = "gradient", fill_color: str = "#00FF00") -> bytes:
     """Runs Plot pipeline via native python bindings and returns the generated image bytes."""
     try:
         import dsp_plotter_py
         return dsp_plotter_py.run_plot_pipeline(
-            input_file, out_format, center_freq, zoom_center, zoom_bw, start_time, duration, window_size, smoothing,
-            plot_fft, plot_waterfall, colormap, width, height
+            input_file, out_format, center_freq, zoom_center, zoom_bw, start_time, duration,
+            window_size, smoothing, plot_fft, plot_waterfall, colormap, width, height, theme, fill_mode, fill_color
         )
     except Exception as e:
         raise RuntimeError(f"Plot Pipeline failed: {e}")

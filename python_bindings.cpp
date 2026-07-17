@@ -173,7 +173,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing,
-                                 bool plot_fft, bool plot_waterfall, const std::string& colormap, int width, int height) {
+                                 bool plot_fft, bool plot_waterfall, const std::string& colormap, int width, int height,
+                                 const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex) {
         DspEngine engine(width);
         DspEngine::StreamConfig config;
         config.filename = input_file;
@@ -217,7 +218,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         if (plot_waterfall && !result.spectrogram.empty()) {
             PlotGenerator::generate_fast_waterfall_mem(result.spectrogram, out_buffer, width, height, colormap,
-                final_min_db, final_max_db, z_center, fs, start_time_str, total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "");
+                final_min_db, final_max_db, z_center, fs, start_time_str, total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "", -1.0, 0.0, 0.0, 0.0, "red", theme);
         } else if (plot_fft && !result.spectrogram.empty()) {
             size_t num_frames = result.spectrogram.size();
             size_t frame_size = result.spectrogram[0].size();
@@ -230,10 +231,10 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             for (size_t i = 0; i < frame_size; ++i) {
                 avg_mag[i] /= num_frames;
             }
-            PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 10, "", 90, 8, colormap, "");
+            PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 10, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
         }
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"));
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00");
 }
