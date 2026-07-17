@@ -105,6 +105,9 @@ async def update_file_metadata(filename: str, req: UpdateRequest):
     This endpoint modifies the file header (e.g., X-Midas Bluefile header) to set the 
     timecode and center frequency in place. This allows manual correction of missing or incorrect metadata 
     so that downstream processing and plotting display accurate time and frequency axis information.
+    Specifically, it parses standard ISO-8601 timestamps and converts them into the precise 
+    J1950 epoch format required by the native C++ DSP pipeline. Correct metadata is absolutely 
+    critical for ensuring that interactive SigPlot visualizations align correctly with real-world events.
     """
     file_path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(file_path):
@@ -120,11 +123,14 @@ async def update_file_metadata(filename: str, req: UpdateRequest):
 @app.post("/api/run/convert")
 async def run_convert(req: ConvertRequest):
     """
-    Convert a signal file into the canonical X-Midas Blue format.
+    Convert a generic signal file into the canonical X-Midas Blue format.
     
-    This endpoint takes an input file (such as WAV or RAW format) and uses the high-performance 
-    dsp_convert tool to restructure the file into an X-Midas Blue (.prm) file. This is useful for 
-    importing external generic data captures into the platform for optimized visualization and DSP.
+    This endpoint takes an input file (such as WAV or raw binary IQ format) and uses the high-performance 
+    dsp_convert tool to restructure the file into an X-Midas Blue (.prm) file. This is an essential step 
+    for importing external data captures into the platform for optimized visualization and DSP. 
+    The generated .prm file pairs a highly efficient binary payload with a rich metadata header, 
+    allowing our core C++ plotting tools to seamlessly memory-map (mmap) the data for instantaneous 
+    streaming into the web interface.
     """
     in_path = os.path.join(DATA_DIR, req.input_file)
     out_path = os.path.join(DATA_DIR, req.output_file)
@@ -151,9 +157,12 @@ async def run_fft(req: FFTRequest):
     """
     Generate an interactive 1D FFT Spectrum.
     
-    Executes the dsp_fft C++ tool on the target signal file to calculate the power spectral density. 
-    It returns an X-Midas Type 2000 file that can be instantly rendered in the browser via SigPlot, 
-    supporting full dynamic zooming, panning, and interaction.
+    Executes the highly-optimized dsp_fft C++ tool on the target signal file to calculate the 
+    power spectral density (PSD). It performs heavily vectorized FFT operations via the KFR library 
+    to rapidly process massive datasets. It returns an X-Midas Type 2000 file that can be instantly 
+    rendered in the browser via SigPlot, supporting full dynamic zooming, panning, and real-time 
+    interaction. The output bypasses standard image formats in favor of raw spectral vectors, 
+    allowing the frontend client to dictate the visual presentation dynamically.
     """
     try:
         in_path = os.path.join(DATA_DIR, req.input_file)
@@ -183,8 +192,10 @@ async def run_psd(req: PSDRequest):
     Generate an interactive 2D Waterfall/Spectrogram.
     
     Executes the dsp_psd C++ tool on the target signal file to calculate a continuous time-frequency spectrogram. 
-    It returns an X-Midas Type 2000 file that can be natively rendered as an interactive waterfall plot in the 
-    browser, allowing deep inspection of signal transients over time.
+    It leverages sliding windows and advanced overlapping (Welch's method) to produce high-fidelity spectral 
+    slices over time. It returns an X-Midas Type 2000 file that is natively rendered as an interactive 
+    waterfall plot in the browser using SigPlot. This allows for deep inspection of signal transients, 
+    bursts, and anomalies over time with lossless coordinate tracking and crosshair measurement capabilities.
     """
     try:
         in_path = os.path.join(DATA_DIR, req.input_file)
@@ -214,8 +225,11 @@ async def run_plot(req: PlotRequest):
     Generate a static high-definition image plot.
     
     Invokes the dsp_plotter C++ tool to create a perfectly rasterized PNG or JPEG image of the 
-    requested signal's spectrum or waterfall. This is ideal for generating static assets for reports, 
-    saving processing power when interactive capabilities are not required.
+    requested signal's spectrum or waterfall. This endpoint bypasses the interactive SigPlot renderer 
+    entirely, instead using the STB single-file image library directly within the C++ pipeline to 
+    encode the visual representation. This is ideal for generating static assets for reports, 
+    saving processing power when interactive capabilities are not required, and applying custom 
+    pixel-perfect colormaps and theming before it ever reaches the browser.
     """
     out_format = "png" if req.plot_fft else "jpg"
     out_id = f"plot_{uuid.uuid4().hex[:8]}.{out_format}"
@@ -254,8 +268,10 @@ def get_data(filename: str):
     Retrieve binary or image data by filename.
     
     Serves the underlying output files (such as .prm interactive plots or .jpg/.png static images) 
-    from the application's data directory or memory cache. This endpoint acts as the primary 
-    content delivery mechanism for the frontend viewers.
+    from the application's data directory or the high-speed in-memory cache. This endpoint acts as 
+    the primary content delivery mechanism for the frontend viewers. It intelligently detects the 
+    file extension to set the correct MIME type (e.g., application/octet-stream for bluefiles, 
+    image/jpeg for waterfall exports) ensuring the browser handles the payload properly.
     """
     if filename in memory_cache:
         data = memory_cache[filename]

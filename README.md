@@ -9,8 +9,17 @@ A high-performance C++ suite of tools for processing, manipulating, and visualiz
 - **Blazing Fast**: Uses KFR for vectorized FFT operations and filtering.
 - **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
-  - *Note: **X-Midas Blue** is our internal canonical format. You can seamlessly import `.wav` and `.raw` files using the `dsp_convert` tool, or directly through the web UI's interactive File Upload & Converter panel.*
 - **Time/Frequency Slicing**: Tools support processing specific time durations and dynamically zooming into narrow slivers of the spectrum via digital down conversion (DDC).
+
+## Data Architecture & Import
+**X-Midas Blue** (`.prm` / `.tmp`) is our internal canonical format for all DSP operations. It provides a highly efficient binary structure for storing streaming telemetry and signal data, paired with a metadata header that includes precision timecodes, center frequencies, and data type encodings.
+
+If you have external SDR captures in generic formats like `.wav` or raw binary (`.raw`, `.dat`), you must convert them to X-Midas Blue before they can be plotted or processed. 
+
+You can easily accomplish this directly within the web interface:
+1. Use the **Upload & Converter** panel to upload your `.wav` or `.raw` file.
+2. Provide the essential metadata (Center Frequency, Sample Rate, and Start Time).
+3. The backend will invoke the `dsp_convert` tool to rapidly transcode the file into a structured `.prm` bluefile, which will instantly become available in the dropdown for visualization.
 
 ## Build Instructions
 
