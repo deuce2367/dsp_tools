@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
+COPY CMakeLists.txt *.hpp *.cpp *.h ./
+COPY tests ./tests/
 RUN mkdir -p build && cd build && cmake .. && make -j$(nproc)
 
 # Build Stage 2: Node Frontend
@@ -38,6 +39,7 @@ COPY --from=cpp-builder /app/build/dsp_tuner /app/build/dsp_tuner
 COPY --from=cpp-builder /app/build/dsp_resample /app/build/dsp_resample
 COPY --from=cpp-builder /app/build/dsp_whitener /app/build/dsp_whitener
 COPY --from=cpp-builder /app/build/dsp_format /app/build/dsp_format
+COPY --from=cpp-builder /app/build/dsp_convert /app/build/dsp_convert
 COPY --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
 # Copy frontend static build
 COPY --from=node-builder /app/dist /app/web/frontend/dist

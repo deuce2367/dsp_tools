@@ -53,7 +53,7 @@ public:
     std::vector<double> compute_fft_magnitude_db(const std::vector<double>& real_samples);
     
     // File Ingestion
-    void get_file_info(const std::string& filename, int& channels, double& sample_rate, bool& is_wav, bool& is_blue, std::string& format_str, double& timecode);
+    void get_file_info(const std::string& filename, int& channels, double& sample_rate, bool& is_wav, bool& is_blue, std::string& format_str, double& timecode, double& center_freq);
     
 private:
     size_t m_fft_size;

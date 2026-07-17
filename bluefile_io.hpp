@@ -108,6 +108,49 @@ inline BlueHeader read_bluefile_header(const std::string& filename) {
     return hdr;
 }
 
+inline void update_bluefile_header(const std::string& filename, double timecode, double center_freq) {
+    int fd = open(filename.c_str(), O_RDWR);
+    if (fd < 0) throw std::runtime_error("Cannot open BLUE file to modify: " + filename);
+    BlueHeader hdr;
+    if (read(fd, &hdr, sizeof(BlueHeader)) != sizeof(BlueHeader)) {
+        close(fd);
+        throw std::runtime_error("Invalid BLUE file size");
+    }
+    
+    // Update timecode
+    hdr.timecode = timecode;
+    
+    // Update center_freq in keywords if non-zero or just replace it
+    std::string keyword_str(hdr.keywords, strnlen(hdr.keywords, sizeof(hdr.keywords)));
+    size_t rf_pos = keyword_str.find("RF_FREQUENCY_MHZ=");
+    if (rf_pos != std::string::npos) {
+        size_t val_start = rf_pos + 17;
+        size_t val_end = keyword_str.find_first_of(";\n ", val_start);
+        if (val_end == std::string::npos) val_end = keyword_str.length();
+        
+        // Remove old RF_FREQUENCY_MHZ
+        keyword_str.erase(rf_pos, val_end - rf_pos);
+    }
+    
+    if (center_freq > 0.0) { 
+        if (!keyword_str.empty() && keyword_str.back() != '\n') keyword_str += "\n";
+        keyword_str += "RF_FREQUENCY_MHZ=" + std::to_string(center_freq) + "\n";
+    }
+    
+    if (keyword_str.length() >= sizeof(hdr.keywords)) {
+        keyword_str = keyword_str.substr(0, sizeof(hdr.keywords) - 1);
+    }
+    std::memset(hdr.keywords, 0, sizeof(hdr.keywords));
+    std::strncpy(hdr.keywords, keyword_str.c_str(), sizeof(hdr.keywords) - 1);
+    
+    lseek(fd, 0, SEEK_SET);
+    if (write(fd, &hdr, sizeof(BlueHeader)) != sizeof(BlueHeader)) {
+        close(fd);
+        throw std::runtime_error("Failed to write modified bluefile header.");
+    }
+    close(fd);
+}
+
 inline std::vector<uint8_t> read_bluefile_ext_header(const std::string& filename, const BlueHeader& hdr) {
     if (hdr.ext_size <= 0 || hdr.ext_start <= 0) return {};
     int fd = open(filename.c_str(), O_RDONLY);

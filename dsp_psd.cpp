@@ -51,7 +51,8 @@ int main(int argc, char** argv) {
         bool is_blue;
         std::string format_str;
         double timecode;
-        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        double dummy_cf;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode, dummy_cf);
 
         config.is_wav = is_wav;
         config.is_blue = is_blue;

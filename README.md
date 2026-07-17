@@ -9,6 +9,7 @@ A high-performance C++ suite of tools for processing, manipulating, and visualiz
 - **Blazing Fast**: Uses KFR for vectorized FFT operations and filtering.
 - **Low Memory Footprint**: Processes large signal data input efficiently via memory mapping (`mmap()`).
 - **Flexible Formats**: Native auto-detection and support for SigMF (`.sigmf-meta`/`.sigmf-data`), X-Midas Blue (`.prm`/`.tmp`), and standard WAV files (Real or Complex/IQ).
+  - *Note: **X-Midas Blue** is our internal canonical format. You can seamlessly import `.wav` and `.raw` files using the `dsp_convert` tool, or directly through the web UI's interactive File Upload & Converter panel.*
 - **Time/Frequency Slicing**: Tools support processing specific time durations and dynamically zooming into narrow slivers of the spectrum via digital down conversion (DDC).
 
 ## Build Instructions

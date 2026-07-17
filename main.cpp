@@ -228,7 +228,8 @@ int main(int argc, char** argv) {
         }
         
         if (!is_sigmf) {
-            dsp.get_file_info(input_file, num_channels, file_sr, is_wav, is_blue, format_str, timecode);
+            double dummy_cf;
+            dsp.get_file_info(input_file, num_channels, file_sr, is_wav, is_blue, format_str, timecode, dummy_cf);
             
             if (is_wav || is_blue) {
                 format = (num_channels == 2) ? "complex" : "real";

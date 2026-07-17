@@ -150,6 +150,13 @@ endif()
 target_link_libraries(dsp_format PRIVATE kfr kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_format PRIVATE -Wno-stringop-overflow)
 
+add_executable(dsp_convert dsp_convert.cpp dsp_convert_lib.cpp)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(dsp_convert PUBLIC OpenMP::OpenMP_CXX)
+endif()
+target_link_libraries(dsp_convert PRIVATE kfr kfr_dsp kfr_io CLI11::CLI11 spdlog::spdlog)
+target_compile_options(dsp_convert PRIVATE -Wno-stringop-overflow)
+
 add_executable(dsp_whitener dsp_whitener.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_whitener PUBLIC OpenMP::OpenMP_CXX)
@@ -172,7 +179,7 @@ target_link_libraries(dsp_psd PRIVATE kfr kfr_dft kfr_dsp kfr_io CLI11::CLI11 sp
 target_compile_options(dsp_psd PRIVATE -Wno-stringop-overflow)
 
 # Python bindings
-pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp)
+pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp dsp_convert_lib.cpp)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(dsp_plotter_py PRIVATE "-flto=auto")
     target_link_options(dsp_plotter_py PRIVATE "-flto=auto")

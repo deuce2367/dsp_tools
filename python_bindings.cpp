@@ -3,6 +3,7 @@
 #include "dsp_engine.hpp"
 #include "plot_generator.hpp"
 #include "bluefile_io.hpp"
+#include "dsp_convert.hpp"
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -70,14 +71,18 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         .def(py::init<size_t>())
         .def("process_file_streaming", &DspEngine::process_file_streaming)
         .def("get_file_info", [](DspEngine& self, const std::string& filename) {
-            int channels;
-            double sample_rate;
-            bool is_wav;
-            bool is_blue;
-            std::string format_str;
-            double timecode;
-            self.get_file_info(filename, channels, sample_rate, is_wav, is_blue, format_str, timecode);
-            return py::make_tuple(channels, sample_rate, is_wav, is_blue, format_str, timecode);
+            int channels = 0;
+            double sample_rate = 1.0;
+            bool is_wav = false;
+            bool is_blue = false;
+            std::string format_str = "";
+            double timecode = 0.0;
+            double center_freq = 0.0;
+            self.get_file_info(filename, channels, sample_rate, is_wav, is_blue, format_str, timecode, center_freq);
+            return py::make_tuple(channels, sample_rate, is_wav, is_blue, format_str, timecode, center_freq);
+        })
+        .def_static("update_header", [](const std::string& filename, double timecode, double center_freq) {
+            update_bluefile_header(filename, timecode, center_freq);
         });
 
     py::class_<PlotGenerator>(m, "PlotGenerator")
@@ -96,6 +101,12 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
             py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet", py::arg("font_path") = "");
 
+    m.def("run_convert", [](const std::string& input_file, const std::string& output_file, 
+                            const std::string& format, double rate, double freq_mhz, bool sigmf, double timecode) {
+        run_convert_pipeline(input_file, output_file, format, rate, freq_mhz, sigmf, timecode);
+    }, py::arg("input_file"), py::arg("output_file"), py::arg("format")="", py::arg("rate")=1.0, 
+       py::arg("freq_mhz")=0.0, py::arg("sigmf")=false, py::arg("timecode")=0.0);
+
     m.def("run_fft_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing) {
@@ -103,7 +114,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         DspEngine::StreamConfig config;
         config.filename = input_file;
         int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
-        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        double dummy_cf;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode, dummy_cf);
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing;
@@ -137,7 +149,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         DspEngine::StreamConfig config;
         config.filename = input_file;
         int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
-        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        double dummy_cf;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode, dummy_cf);
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
@@ -174,12 +187,14 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing,
                                  bool plot_fft, bool plot_waterfall, const std::string& colormap, int width, int height,
-                                 const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex) {
+                                 const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex,
+                                 double zmin, double zmax) {
         DspEngine engine(width);
         DspEngine::StreamConfig config;
         config.filename = input_file;
         int channels; double sample_rate; bool is_wav, is_blue; std::string format_str; double timecode;
-        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode);
+        double dummy_cf;
+        engine.get_file_info(input_file, channels, sample_rate, is_wav, is_blue, format_str, timecode, dummy_cf);
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
@@ -200,8 +215,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             }
         }
         double mean_db = count_db > 0 ? (sum_db / count_db) : -100.0;
-        double final_min_db = mean_db - 15.0;
-        double final_max_db = actual_max_db;
+        double final_min_db = (zmin > -999.0) ? zmin : (mean_db - 15.0);
+        double final_max_db = (zmax < 999.0) ? zmax : actual_max_db;
 
         double total_duration_sec = (config.sample_rate > 0.0) ? result.spectrogram.size() * result.actual_step_size / config.sample_rate : 0.0;
         double z_center = result.actual_zoom_center;
@@ -236,5 +251,5 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00");
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0);
 }

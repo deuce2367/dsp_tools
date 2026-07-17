@@ -4,7 +4,7 @@
   --text-color: #ffffff;
   --border-color: #333;
   --input-bg: #2d2d2d;
-  --accent-color: #61dafb;
+  --accent-color: #3b82f6;
 }
 
 [data-theme='light'] {
@@ -110,3 +110,5 @@ button:hover {
   border: 1px solid var(--border-color);
   background-color: black;
 }
+
+

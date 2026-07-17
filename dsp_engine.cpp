@@ -44,11 +44,12 @@ std::vector<double> DspEngine::compute_fft_magnitude_db(const std::vector<double
     
     return mag_db;
 }
-void DspEngine::get_file_info(const std::string& filename, int& channels, double& sample_rate, bool& is_wav, bool& is_blue, std::string& format_str, double& timecode) {
+void DspEngine::get_file_info(const std::string& filename, int& channels, double& sample_rate, bool& is_wav, bool& is_blue, std::string& format_str, double& timecode, double& center_freq) {
     is_wav = false;
     is_blue = false;
     format_str = "float32";
     timecode = 0.0;
+    center_freq = 0.0;
 
     if (filename.size() >= 4) {
         std::string ext = filename.substr(filename.size() - 4);
@@ -85,6 +86,17 @@ void DspEngine::get_file_info(const std::string& filename, int& channels, double
             sample_rate = 1.0;
         }
         timecode = hdr.timecode;
+        
+        std::string keyword_str(hdr.keywords, strnlen(hdr.keywords, sizeof(hdr.keywords)));
+        size_t rf_pos = keyword_str.find("RF_FREQUENCY_MHZ=");
+        if (rf_pos != std::string::npos) {
+            size_t val_start = rf_pos + 17;
+            size_t val_end = keyword_str.find_first_of(";\n ", val_start);
+            if (val_end == std::string::npos) val_end = keyword_str.length();
+            try {
+                center_freq = std::stod(keyword_str.substr(val_start, val_end - val_start));
+            } catch(...) {}
+        }
     }
 }
 
