@@ -93,6 +93,16 @@ class ConvertRequest(BaseModel):
     freq_mhz: float = 0.0
     timecode: str = ""
 
+class TunerRequest(BaseModel):
+    input_file: str
+    output_file: str
+    center_freq: float # in Hz
+    bandwidth: float # in Hz
+    start_time: float # in seconds
+    duration: float # in seconds
+    file_center: float # in Hz
+    quality: str = "normal"
+
 class UpdateRequest(BaseModel):
     timecode: str = ""
     center_freq: float = 0.0
@@ -151,6 +161,39 @@ async def run_convert(req: ConvertRequest):
         return {"status": "success", "output_file": req.output_file}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/run/tuner")
+async def run_tuner(req: TunerRequest):
+    """
+    Digitally down-converts (DDC) and time-slices a segment of the signal into a new file.
+    
+    This endpoint utilizes the dsp_tuner C++ tool to isolate a specific time and frequency band 
+    from the input file. The output is a new X-Midas Bluefile with a reduced, optimal sample rate 
+    and an updated timecode reflecting the cropped offset. This allows for deep extraction of 
+    signals of interest while perfectly preserving phase coherency.
+    """
+    in_path = os.path.join(DATA_DIR, req.input_file)
+    out_path = os.path.join(DATA_DIR, req.output_file)
+    if not os.path.exists(in_path):
+        raise HTTPException(status_code=404, detail="Input file not found")
+        
+    try:
+        await asyncio.to_thread(
+            dsp_wrapper.run_tuner,
+            in_path,
+            out_path,
+            req.center_freq,
+            req.bandwidth,
+            req.start_time,
+            req.duration,
+            req.file_center,
+            True, # file_center_provided
+            req.quality
+        )
+        return {"status": "success", "output_file": req.output_file}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/run/fft")
 async def run_fft(req: FFTRequest):

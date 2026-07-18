@@ -46,3 +46,12 @@ def run_convert(input_file: str, output_file: str, format: str = "", rate: float
         dsp_plotter_py.run_convert(input_file, output_file, format, rate, freq_mhz, sigmf, timecode)
     except Exception as e:
         raise RuntimeError(f"Convert Pipeline failed: {e}")
+
+def run_tuner(input_file: str, output_file: str, center: float, bandwidth: float, start_time: float = 0.0, duration: float = 0.0, file_center: float = 0.0, file_center_provided: bool = False, quality_str: str = "normal"):
+    """Runs digital down-conversion pipeline via native python bindings."""
+    try:
+        import dsp_plotter_py
+        dsp_plotter_py.run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality_str)
+    except Exception as e:
+        raise RuntimeError(f"Tuner Pipeline failed: {e}")
+

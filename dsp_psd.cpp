@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
         // Setup adjunct for Type 2000
         hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0);
         hdr.xdelta = result.actual_zoom_bw / frame_size;
-        hdr.xunits = 2; // Hz
+        hdr.xunits = 4; // MHz
 
         double ydelta = static_cast<double>(result.actual_step_size) / config.sample_rate;
         hdr.ystart = result.original_start_time;

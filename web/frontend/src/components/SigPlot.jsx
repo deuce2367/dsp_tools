@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Plot } from 'sigplot';
 
-const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff00', sigplotColormap = 1, onDataLoaded }) => {
+const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff00', sigplotColormap = 1, onDataLoaded, onZoom }) => {
   const plotRef = useRef(null);
   const sigplotInstance = useRef(null);
 
@@ -53,6 +53,22 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       } catch (e) {
         console.error("Sigplot overlay threw an exception:", e);
       }
+    }
+    
+    if (sigplotInstance.current && !sigplotInstance.current.__hasZoomListener) {
+      sigplotInstance.current.addListener("zoom", (evt) => {
+        if (onZoom && evt) {
+          try {
+            onZoom({
+              xmin: evt.xmin,
+              xmax: evt.xmax,
+              ymin: evt.ymin,
+              ymax: evt.ymax
+            });
+          } catch(e) {}
+        }
+      });
+      sigplotInstance.current.__hasZoomListener = true;
     }
 
     return () => {

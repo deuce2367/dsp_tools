@@ -4,6 +4,7 @@
 #include "plot_generator.hpp"
 #include "bluefile_io.hpp"
 #include "dsp_convert.hpp"
+#include "dsp_tuner.hpp"
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -107,6 +108,20 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     }, py::arg("input_file"), py::arg("output_file"), py::arg("format")="", py::arg("rate")=1.0, 
        py::arg("freq_mhz")=0.0, py::arg("sigmf")=false, py::arg("timecode")=0.0);
 
+    m.def("run_tuner_pipeline", [](const std::string& input_file, const std::string& output_file, 
+                                   double center, double bandwidth, double start_time, double duration, 
+                                   double file_center, bool file_center_provided, const std::string& quality_str) {
+        TunerQuality quality = TunerQuality::Normal;
+        if (quality_str == "draft") quality = TunerQuality::Draft;
+        else if (quality_str == "low") quality = TunerQuality::Low;
+        else if (quality_str == "normal") quality = TunerQuality::Normal;
+        else if (quality_str == "high") quality = TunerQuality::High;
+        else if (quality_str == "perfect") quality = TunerQuality::Perfect;
+        run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
+    }, py::arg("input_file"), py::arg("output_file"), py::arg("center"), py::arg("bandwidth"), 
+       py::arg("start_time")=0.0, py::arg("duration")=0.0, py::arg("file_center")=0.0, py::arg("file_center_provided")=false, 
+       py::arg("quality_str")="normal", py::call_guard<py::gil_scoped_release>());
+
     m.def("run_fft_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing) {
@@ -140,7 +155,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         buffer.append(reinterpret_cast<const char*>(out_f.data()), out_f.size() * sizeof(float));
         
         return py::bytes(buffer);
-    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"));
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
 
     m.def("run_psd_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
@@ -181,7 +196,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         }
         
         return py::bytes(buffer);
-    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"));
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
 
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
                                  double center_freq, double zoom_center, double zoom_bw, 
@@ -251,5 +266,5 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0);
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
 }

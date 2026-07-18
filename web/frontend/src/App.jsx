@@ -93,6 +93,11 @@ function App() {
   const [imagePlot, setImagePlot] = useState('');
   const [sigplotUrl, setSigplotUrl] = useState('');
   const [sigplotType, setSigplotType] = useState('1D');
+  const [panels, setPanels] = useState([
+    { id: 'static-waterfall', type: 'static', subType: 'waterfall', title: 'Static Waterfall (PSD)', url: '' }
+  ]);
+  const [layoutMode, setLayoutMode] = useState('auto');
+
   const [staticPlotType, setStaticPlotType] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(-1);
@@ -115,6 +120,11 @@ function App() {
   const xhrRef = useRef(null);
   const [fileInfo, setFileInfo] = useState(null);
   
+  const [zoomBounds, setZoomBounds] = useState(null);
+  const [showTunerModal, setShowTunerModal] = useState(false);
+  const [tunerParams, setTunerParams] = useState({center: 0, bw: 0, start: 0, dur: 0});
+  const [tunerOutName, setTunerOutName] = useState('');
+  
   const [editTimecode, setEditTimecode] = useState('');
   const [editFreq, setEditFreq] = useState('');
   const [isEditingInfo, setIsEditingInfo] = useState(false);
@@ -131,9 +141,11 @@ function App() {
   };
 
   useEffect(() => {
-    if (imagePlot && staticPlotType) {
-      handleStaticPlot(staticPlotType === 'fft');
-    }
+    panels.forEach(p => {
+        if (p.type === 'static') {
+            handleStaticPlot(p.subType === 'fft');
+        }
+    });
   }, [theme]);
 
   const fetchFiles = async () => {
@@ -141,9 +153,10 @@ function App() {
       const res = await fetch('/api/files');
       const data = await res.json();
       if (data.files) {
-        setAvailableFiles(data.files);
-        if (!data.files.includes(file) && data.files.length > 0) {
-          setFile(data.files[0]);
+        const sorted = data.files.sort((a,b) => a.localeCompare(b));
+        setAvailableFiles(sorted);
+        if (!sorted.includes(file) && sorted.length > 0) {
+          setFile(sorted[0]);
         }
       }
     } catch (e) {
@@ -168,6 +181,7 @@ function App() {
           if (data.center_freq !== undefined) {
             setCenterFreq(data.center_freq);
           }
+          setZoomBounds(null); // Reset bounds when file changes
         } else {
           setFileInfo(null);
         }
@@ -349,10 +363,18 @@ function App() {
             newFreq = data.center_freq;
           }
         }
+        
         // Force refresh plots
-        if (staticPlotType) handleStaticPlot(staticPlotType === 'fft', newFreq);
-        if (sigplotType === '1D') handleInteractiveFFT(newFreq);
-        else if (sigplotType === '2D') handleInteractivePSD(newFreq);
+        setPanels(prev => {
+            prev.forEach(p => {
+                if (p.id === 'interactive-fft') handleInteractiveFFT(newFreq);
+                if (p.id === 'interactive-psd') handleInteractivePSD(newFreq);
+                if (p.id === 'static-fft') handleStaticPlot(true, newFreq);
+                if (p.id === 'static-waterfall') handleStaticPlot(false, newFreq);
+            });
+            return prev;
+        });
+
       } else {
         const data = await res.json();
         alert("Update failed: " + (data.detail || "Unknown error"));
@@ -370,19 +392,20 @@ function App() {
     return isInteractive ? base * 4 : base;
   };
 
-  const handleStaticPlot = async (isFft, overrideFreq = null) => {
+  const handleStaticPlot = async (isFft, overrideFreq = null, targetFile = null) => {
     setLoading(true);
     try {
-      const reqWindowSize = getComputedFftSize(windowSize, staticPanelRef, false);
+      const activeFile = targetFile || file;
+      const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, false);
       const res = await fetch('/api/run/plot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input_file: file,
+          input_file: activeFile,
           center_freq: overrideFreq !== null ? Number(overrideFreq) : Number(centerFreq),
           zoom_bw: 0,
-          width: staticPanelRef.current ? staticPanelRef.current.clientWidth : 800,
-          height: staticPanelRef.current ? staticPanelRef.current.clientHeight : 600,
+          width: 800,
+          height: 600,
           window_size: reqWindowSize,
           smoothing: smoothing,
           colormap: colormap,
@@ -402,8 +425,19 @@ function App() {
         return;
       }
       if (data.output_file) {
-        setImagePlot(`/api/data/${data.output_file}?t=${Date.now()}`);
-        setStaticPlotType(isFft ? 'fft' : 'waterfall');
+        const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
+        const pId = isFft ? 'static-fft' : 'static-waterfall';
+        const pTitle = isFft ? 'Static Spectrum (FFT)' : 'Static Waterfall (PSD)';
+        setPanels(prev => {
+            const existingIdx = prev.findIndex(p => p.id === pId);
+            if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = { ...next[existingIdx], url: newUrl };
+                return next;
+            } else {
+                return [...prev, { id: pId, type: 'static', subType: isFft ? 'fft' : 'waterfall', title: pTitle, url: newUrl }];
+            }
+        });
       }
     } catch (e) {
       alert("Error generating plot: " + e);
@@ -411,15 +445,16 @@ function App() {
     setLoading(false);
   };
 
-  const handleInteractivePSD = async (overrideFreq = null) => {
+  const handleInteractivePSD = async (overrideFreq = null, targetFile = null) => {
     setLoading(true);
     try {
-      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef, true);
+      const activeFile = targetFile || file;
+      const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
       const res = await fetch('/api/run/psd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input_file: file,
+          input_file: activeFile,
           center_freq: (overrideFreq !== null && typeof overrideFreq !== 'object') ? Number(overrideFreq) : Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
@@ -434,9 +469,17 @@ function App() {
       }
       if (data.output_file) {
         setSigplotType('2D');
-        // We set the sigplot URL, adding a cache buster forces the component to reload
-        setSigplotUrl(''); // Clear it first to force unmount/remount of sigplot if it got stuck
-        setTimeout(() => setSigplotUrl(`/api/data/${data.output_file}?t=${Date.now()}`), 10);
+        const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
+        setPanels(prev => {
+            const existingIdx = prev.findIndex(p => p.id === 'interactive-psd');
+            if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = { ...next[existingIdx], url: newUrl };
+                return next;
+            } else {
+                return [...prev, { id: 'interactive-psd', type: 'interactive', subType: '2D', title: 'Interactive Waterfall (PSD)', url: newUrl }];
+            }
+        });
       }
     } catch (e) {
       alert("Error generating PSD: " + e);
@@ -444,15 +487,16 @@ function App() {
     setLoading(false);
   };
 
-  const handleInteractiveFFT = async (overrideFreq = null) => {
+  const handleInteractiveFFT = async (overrideFreq = null, targetFile = null) => {
     setLoading(true);
     try {
-      const reqWindowSize = getComputedFftSize(windowSize, interactivePanelRef, true);
+      const activeFile = targetFile || file;
+      const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
       const res = await fetch('/api/run/fft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          input_file: file,
+          input_file: activeFile,
           center_freq: (overrideFreq !== null && typeof overrideFreq !== 'object') ? Number(overrideFreq) : Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
@@ -467,8 +511,17 @@ function App() {
       }
       if (data.output_file) {
         setSigplotType('1D');
-        setSigplotUrl('');
-        setTimeout(() => setSigplotUrl(`/api/data/${data.output_file}?t=${Date.now()}`), 10);
+        const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
+        setPanels(prev => {
+            const existingIdx = prev.findIndex(p => p.id === 'interactive-fft');
+            if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = { ...next[existingIdx], url: newUrl };
+                return next;
+            } else {
+                return [...prev, { id: 'interactive-fft', type: 'interactive', subType: '1D', title: 'Interactive Spectrum (FFT)', url: newUrl }];
+            }
+        });
       }
     } catch (e) {
       alert("Error generating FFT: " + e);
@@ -485,11 +538,94 @@ function App() {
     // but the slider will display the bounds.
   };
 
+  const handleZoom = (bounds) => {
+    setZoomBounds(bounds);
+  };
+
+  const openTuner = () => {
+    if (!zoomBounds || !fileInfo) return;
+    const xmin = zoomBounds.xmin;
+    const xmax = zoomBounds.xmax;
+    const ymin = zoomBounds.ymin;
+    const ymax = zoomBounds.ymax;
+    
+    const center = (xmin + xmax) / 2.0;
+    const bw = Math.abs(xmax - xmin);
+    
+    let start = 0;
+    let dur = 0;
+    if (sigplotType === '2D') {
+      start = Math.min(ymin, ymax);
+      dur = Math.abs(ymax - ymin);
+    }
+    
+    setTunerParams({center, bw, start, dur});
+    
+    // Propose reasonable name
+    let baseName = file.substring(0, file.lastIndexOf('.'));
+    if (!baseName) baseName = file;
+    let proposed = `${baseName}_tuned_${center.toFixed(3)}MHz_${bw.toFixed(3)}MHz.prm`;
+    setTunerOutName(proposed);
+    
+    setShowTunerModal(true);
+  };
+
+  const startTuner = async () => {
+    setShowTunerModal(false);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/run/tuner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_file: file,
+          output_file: tunerOutName,
+          center_freq: tunerParams.center * 1e6, // zoom bounds are in MHz, convert to Hz
+          bandwidth: tunerParams.bw * 1e6,
+          start_time: tunerParams.start,
+          duration: tunerParams.dur,
+          file_center: Number(centerFreq) * 1e6,
+          quality: 'normal'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Error tuning: " + (data.detail || JSON.stringify(data)));
+      } else {
+        await fetchFiles();
+        setFile(tunerOutName);
+        setShowTunerModal(false);
+        setZoomBounds(null); // Reset bounds
+        
+        // Refresh the plot to show the newly tuned data
+        setTimeout(() => {
+          setPanels(prev => {
+              prev.forEach(p => {
+                  if (p.id === 'interactive-fft') handleInteractiveFFT(tunerParams.center, tunerOutName);
+                  if (p.id === 'interactive-psd') handleInteractivePSD(tunerParams.center, tunerOutName);
+                  if (p.id === 'static-fft') handleStaticPlot(true, tunerParams.center, tunerOutName);
+                  if (p.id === 'static-waterfall') handleStaticPlot(false, tunerParams.center, tunerOutName);
+              });
+              return prev;
+          });
+        }, 300);
+      }
+    } catch(e) {
+      alert("Error: " + e);
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="container">
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
         <h1>DSP Tools Interface</h1>
         <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+          <select value={layoutMode} onChange={e => setLayoutMode(e.target.value)} style={{width: 'auto', margin: 0}}>
+            <option value="auto">Layout: Auto</option>
+            <option value="horizontal">Layout: Horizontal</option>
+            <option value="vertical">Layout: Vertical</option>
+          </select>
           <a href="/docs" target="_blank" rel="noreferrer" style={{color: 'var(--text-color)', fontSize: '0.9rem', opacity: 0.7, textDecoration: 'none'}}>API (Swagger)</a>
           <button onClick={toggleTheme} style={{width: 'auto', margin: 0}}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
         </div>
@@ -515,8 +651,10 @@ function App() {
               </select>
               <input type="file" accept=".prm,.wav,.bin,.raw,.dat" onChange={handleUpload} style={{ display: 'none' }} id="file-upload" />
               <label htmlFor="file-upload" style={{
-                background: 'var(--border-color)', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', margin: 0, fontWeight: 'normal', whiteSpace: 'nowrap'
-              }}>Upload</label>
+                background: 'var(--accent-color)', color: '#000', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }} title="Upload File">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              </label>
             </div>
             {fileInfo && (
               <div style={{ marginTop: '8px', padding: '8px', background: 'var(--input-bg)', borderRadius: '4px', fontSize: '0.85rem' }}>
@@ -590,9 +728,23 @@ function App() {
               </div>
             )}
           </div>
-          <div className="form-group">
-            <label>Center Frequency (MHz)</label>
-            <input type="text" value={centerFreq} onChange={(e) => setCenterFreq(e.target.value)} />
+          <div className="form-group" style={{display: 'flex', gap: '10px', alignItems: 'flex-end'}}>
+            <div style={{flex: 1}}>
+              <label>DSP Processing</label>
+              <button 
+                disabled={!zoomBounds} 
+                onClick={openTuner}
+                style={{
+                  width: '100%', 
+                  margin: 0, 
+                  background: zoomBounds ? 'var(--accent-color)' : 'var(--border-color)',
+                  color: zoomBounds ? '#000' : 'var(--text-color)',
+                  opacity: zoomBounds ? 1 : 0.5,
+                  cursor: zoomBounds ? 'pointer' : 'not-allowed'
+                }}>
+                Tuner (DDC)
+              </button>
+            </div>
           </div>
           <div className="form-group" style={{display: 'flex', gap: '10px'}}>
             <div style={{flex: 1}}>
@@ -732,68 +884,97 @@ function App() {
           
         </div>
 
+        
         {/* Visualization Panel */}
-        <div className="plot-container" style={{flex: 3, display: 'flex', flexDirection: 'column'}}>
-          
-          <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <h2 style={{marginTop: 0, fontSize: '1.2rem'}}>Interactive SigPlot View</h2>
-            <div style={{flex: 1, display: 'flex', gap: '2px'}}>
-              <div ref={interactivePanelRef} style={{flex: 1, position: 'relative', minHeight: '200px'}}>
-                {sigplotUrl ? (
-                  <SigPlot dataUrl={sigplotUrl} type={sigplotType} zmin={zmin} zmax={zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} />
-                ) : (
-                  <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
-                )}
-              </div>
-              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
-                <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
+        <div className="plot-container" style={{
+            flex: 3, 
+            display: 'grid', 
+            gap: '10px',
+            gridTemplateColumns: panels.length === 1 ? '1fr' : 
+                                 panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr 1fr' : '1fr') :
+                                 panels.length === 3 ? (layoutMode === 'vertical' ? '1fr' : '1fr 1fr 1fr') :
+                                 panels.length === 4 ? '1fr 1fr' :
+                                 panels.length <= 6 ? '1fr 1fr 1fr' :
+                                 '1fr 1fr 1fr 1fr',
+            gridTemplateRows: panels.length === 1 ? '1fr' :
+                              panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr' : '1fr 1fr') :
+                              panels.length === 3 ? (layoutMode === 'vertical' ? '1fr 1fr 1fr' : '1fr') :
+                              panels.length <= 6 ? '1fr 1fr' :
+                              '1fr 1fr 1fr',
+        }}>
+          {panels.map(panel => (
+            <div key={panel.id} className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px'}}>
+                  <h2 style={{marginTop: 0, marginBottom: 0, fontSize: '0.9rem'}}>{panel.title}</h2>
+                  <button onClick={() => setPanels(prev => prev.filter(p => p.id !== panel.id))} style={{width: '20px', height: '20px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', background: 'var(--accent-color)', color: '#000', margin: 0, flexShrink: 0}} title="Close Panel">
+                      <svg width="12" height="12"  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
               </div>
 
-              <div style={{width: '35px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '5px 0'}}>
-                <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '8px'}}>{zmax === '' ? 'Auto' : zmax}</div>
-                <div style={{flex: 1, width: '100%', display: 'flex', justifyContent: 'center'}}>
-                  <Slider 
-                    vertical 
-                    range 
-                    min={gainBounds[0]} 
-                    max={gainBounds[1]} 
-                    value={[
-                      zmin === '' ? gainBounds[0] + 10 : Number(zmin), 
-                      zmax === '' ? gainBounds[1] - 10 : Number(zmax)
-                    ]} 
-                    onChange={(val) => { setZmin(val[0]); setZmax(val[1]); }}
-                    handleStyle={[
-                      { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' },
-                      { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' }
-                    ]}
-                    activeHandleStyle={[
-                      { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 },
-                      { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 }
-                    ]}
-                    trackStyle={[{ backgroundColor: 'var(--accent-color)' }]}
-                    railStyle={{ backgroundColor: 'var(--border-color)' }}
-                  />
-                </div>
-                <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginTop: '8px'}}>{zmin === '' ? 'Auto' : zmin}</div>
-              </div>
-            </div>
-          </div>
+              {panel.type === 'interactive' ? (
+                  <div style={{flex: 1, display: 'flex', gap: '2px'}}>
+                    <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
+                      {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
+                      {panel.url ? (
+                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={zmin} zmax={zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={setZoomBounds} />
+                      ) : (
+                        <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                            <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
+                      <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
+                    </div>
 
-          <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <h2 style={{marginTop: 0, fontSize: '1.2rem'}}>Static Plot Output</h2>
-            <div ref={staticPanelRef} style={{flex: 1, position: 'relative', minHeight: '200px', overflow: 'hidden'}}>
-              {imagePlot ? (
-                <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0}}>
-                  <img src={imagePlot} alt="DSP Plotter Output" style={{width: '100%', height: '100%', objectFit: 'fill', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box'}} />
-                </div>
+                    <div style={{width: '35px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '5px 0'}}>
+                      <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '8px'}}>{zmax === '' ? 'Auto' : zmax}</div>
+                      <div style={{flex: 1, width: '100%', display: 'flex', justifyContent: 'center'}}>
+                        <Slider 
+                          vertical 
+                          range 
+                          min={gainBounds[0]} 
+                          max={gainBounds[1]} 
+                          value={[
+                            zmin === '' ? gainBounds[0] + 10 : Number(zmin), 
+                            zmax === '' ? gainBounds[1] - 10 : Number(zmax)
+                          ]} 
+                          onChange={(val) => { setZmin(val[0]); setZmax(val[1]); }}
+                          handleStyle={[
+                            { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' },
+                            { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' }
+                          ]}
+                          activeHandleStyle={[
+                            { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 },
+                            { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 }
+                          ]}
+                          trackStyle={[{ backgroundColor: 'var(--accent-color)' }]}
+                          railStyle={{ backgroundColor: 'var(--border-color)' }}
+                        />
+                      </div>
+                      <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginTop: '8px'}}>{zmin === '' ? 'Auto' : zmin}</div>
+                    </div>
+                  </div>
               ) : (
-                <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                  <p style={{margin: 0}}>Select static plot to view image.</p>
-                </div>
+                  <div style={{flex: 1, position: 'relative', minHeight: '200px', overflow: 'hidden'}}>
+                    {panel.url ? (
+                      <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0}}>
+                        <img src={panel.url} alt="DSP Plotter Output" style={{width: '100%', height: '100%', objectFit: 'fill', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box'}} />
+                      </div>
+                    ) : (
+                      <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                        <p style={{margin: 0}}>Select static plot to view image.</p>
+                      </div>
+                    )}
+                  </div>
               )}
             </div>
-          </div>
-
+          ))}
+          {panels.length === 0 && (
+             <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, background: 'var(--panel-bg)', borderRadius: '8px', border: '1px dashed var(--border-color)'}}>
+                 <h2 style={{opacity: 0.5}}>No panels open. Select an option from Controls.</h2>
+             </div>
+          )}
         </div>
 
       </div>
@@ -824,13 +1005,21 @@ function App() {
                 <option value="SB">Real Int8 (SB)</option>
               </select>
             </div>
-            <div className="form-group">
-              <label>Sample Rate (MHz)</label>
-              <input type="number" step="0.000001" value={importRate} onChange={e => {
-                let val = Number(e.target.value);
-                if (val > 10000) val = val / 1e6; // Auto-convert from Hz to MHz if user types Hz by mistake
-                setImportRate(val);
-              }} />
+            <div style={{display: 'flex', gap: '10px'}}>
+              <div className="form-group" style={{flex: 1}}>
+                <label>Sample Rate (MHz)</label>
+                <input type="text" value={importRate} onChange={e => {
+                  let val = e.target.value;
+                  setImportRate(val);
+                }} />
+              </div>
+              <div className="form-group" style={{flex: 1}}>
+                <label>Center Freq (MHz)</label>
+                <input type="text" value={importFreq} onChange={e => {
+                  let val = e.target.value;
+                  setImportFreq(val);
+                }} />
+              </div>
             </div>
             <div className="form-group">
               <label>Start Date/Time (ISO, J1970, J1950)</label>
@@ -851,13 +1040,7 @@ function App() {
                 }} style={{flex: 1, padding: '4px', fontSize: '0.9rem'}} />
               </div>
             </div>
-            <div className="form-group">
-              <label>Center Frequency (MHz)</label>
-              <input type="text" value={importFreq} onChange={e => {
-                let val = e.target.value;
-                setImportFreq(val);
-              }} />
-            </div>
+
             
             <div style={{marginTop: '15px', padding: '8px', background: 'var(--input-bg)', borderRadius: '4px', fontSize: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px'}}>
               <div><span style={{opacity: 0.7}}>File Size:</span> <b>{(importFileSize / (1024*1024)).toFixed(2)} MB</b></div>
@@ -905,6 +1088,46 @@ function App() {
             <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
               <button onClick={cancelImport} style={{background: 'var(--input-bg)', color: 'var(--text-color)'}}>Cancel</button>
               <button onClick={startImport} disabled={uploadProgress >= 0} style={{opacity: uploadProgress >= 0 ? 0.5 : 1}}>Import</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTunerModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'var(--panel-bg)', padding: '20px', borderRadius: '8px',
+            width: '400px', border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+          }}>
+            <h2 style={{marginTop: 0, color: 'var(--accent-color)'}}>Tuner Setup</h2>
+            <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
+              <div style={{background: 'var(--input-bg)', padding: '10px', borderRadius: '4px', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                <div><strong>Center Freq:</strong> {tunerParams.center.toFixed(4)} MHz</div>
+                <div><strong>Bandwidth:</strong> {tunerParams.bw.toFixed(4)} MHz</div>
+                {tunerParams.dur > 0 && (
+                  <>
+                    <div><strong>Start Time:</strong> {tunerParams.start.toFixed(4)} s</div>
+                    <div><strong>Duration:</strong> {tunerParams.dur.toFixed(4)} s</div>
+                  </>
+                )}
+              </div>
+              <div>
+                <label style={{display: 'block', marginBottom: '5px'}}>Output Filename</label>
+                <input 
+                  type="text" 
+                  value={tunerOutName} 
+                  onChange={e => setTunerOutName(e.target.value)}
+                  style={{width: '100%', padding: '8px', boxSizing: 'border-box'}}
+                />
+              </div>
+              <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+                <button onClick={() => setShowTunerModal(false)} style={{flex: 1, background: 'var(--border-color)', margin: 0}}>Cancel</button>
+                <button onClick={startTuner} style={{flex: 1, background: 'var(--accent-color)', color: '#000', margin: 0, fontWeight: 'bold'}}>Tune</button>
+              </div>
             </div>
           </div>
         </div>

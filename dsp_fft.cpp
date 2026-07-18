@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
         // Setup adjunct for Type 1000
         hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0);
         hdr.xdelta = result.actual_zoom_bw / out_data.size();
-        hdr.xunits = 2; // Hz
+        hdr.xunits = 4; // MHz
 
         write_bluefile_header(output_file, hdr);
         

@@ -1,6 +1,6 @@
 #include <catch2/catch_all.hpp>
 #include "test_utils.hpp"
-#include "../dsp_tuner.cpp"
+#include "../dsp_tuner_lib.cpp"
 
 TEST_CASE("DSP Tuner", "[tuner]") {
     std::string in_file = "/tmp/test_in_tuner.prm";
@@ -11,7 +11,7 @@ TEST_CASE("DSP Tuner", "[tuner]") {
     
     SECTION("Tuner centers signal and decimates") {
         // Tune to 1 MHz, bandwidth 1 MHz (decimate by 4)
-        tune_data<float>(in_file, out_file, 1000000.0, 1000000.0, 0.0, false, resample_quality::normal);
+        run_tuner_pipeline(in_file, out_file, 1000000.0, 1000000.0, 0.0, 0.0, 0.0, false, TunerQuality::Normal);
         
         auto out_data = test_utils::read_bluefile_data(out_file);
         REQUIRE(out_data.size() == 4096 * 2); // Decimated by 4
@@ -24,7 +24,7 @@ TEST_CASE("DSP Tuner", "[tuner]") {
     }
 
     SECTION("Tuner uses file center") {
-        tune_data<float>(in_file, out_file, 0.0, 1000000.0, 1000000.0, true, resample_quality::draft);
+        run_tuner_pipeline(in_file, out_file, 0.0, 1000000.0, 0.0, 0.0, 1000000.0, true, TunerQuality::Draft);
         auto out_data = test_utils::read_bluefile_data(out_file);
         REQUIRE(out_data.size() == 4096 * 2);
     }
