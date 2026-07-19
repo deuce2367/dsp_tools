@@ -828,10 +828,10 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
-void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power_db,
+void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time_domain_data, bool is_complex,
                                            std::vector<uint8_t>& out_buffer,
                                            int out_width, int out_height,
-                                           double min_db, double max_db,
+                                           double min_val, double max_val,
                                            double start_time_sec, double duration_sec,
                                            bool draw_grid, bool draw_labels,
                                            const std::string& out_format,
@@ -839,12 +839,11 @@ void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power
                                            const std::string& title,
                                            int jpeg_quality,
                                            int png_compression,
-                                           const std::string& colormap_name,
                                            const std::string& font_path,
                                            const std::string& theme,
-                                           const std::string& fill_mode,
-                                           const std::string& fill_color_hex) {
-    if (power_db.empty() || out_width <= 0 || out_height <= 0) return;
+                                           const std::string& color_i_hex,
+                                           const std::string& color_q_hex) {
+    if (time_domain_data.empty() || out_width <= 0 || out_height <= 0) return;
     unsigned char bg = (theme == "light") ? 255 : 10;
     std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     int text_scale = std::max(1, std::min(out_width, out_height) / 800);
@@ -857,12 +856,9 @@ void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power
     int plot_w = out_width - margin_left - margin_right;
     int plot_h = out_height - margin_top - margin_bottom;
 
-    // We can reuse the draw_axes_and_grid function. For X-axis, we want to label it as Time.
-    // However, draw_axes_and_grid treats X as frequency if bandwidth_mhz > 0.
-    // So we'll pass bandwidth_mhz = 0 to prevent the frequency labels, and draw our own time labels.
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        0.0, 0.0, "", 0.0, draw_grid, draw_labels, 
-                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme);
+                       false, max_val, min_val, num_x_ticks, num_y_ticks, "", title, font_path, theme);
 
     if (draw_labels) {
         RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
@@ -900,18 +896,6 @@ void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power
         draw_text(pixels, out_width, out_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
     }
 
-    auto get_cmap_color = [&](float norm) -> RGB {
-        if (colormap_name == "electric") return Colormap::get_electric(norm);
-        if (colormap_name == "gqrx") return Colormap::get_gqrx(norm);
-        if (colormap_name == "websdr") return Colormap::get_websdr(norm);
-        if (colormap_name == "pablo") return Colormap::get_pablo(norm);
-        if (colormap_name == "turbo") return Colormap::get_turbo(norm);
-        if (colormap_name == "frog") return Colormap::get_frog(norm);
-        if (colormap_name == "grape") return Colormap::get_grape(norm);
-        if (colormap_name == "jet") return Colormap::get_jet(norm);
-        return Colormap::get_turbo(norm); 
-    };
-
     auto parse_hex_color = [](const std::string& hex) -> RGB {
         if (hex.size() == 7 && hex[0] == '#') {
             int r, g, b;
@@ -921,52 +905,60 @@ void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power
         }
         return RGB{0, 255, 0};
     };
-    RGB custom_fill_color = parse_hex_color(fill_color_hex);
+    RGB color_i = parse_hex_color(color_i_hex);
+    RGB color_q = parse_hex_color(color_q_hex);
 
-    int prev_x = -1;
-    int prev_y = -1;
-    int data_bins = power_db.size();
+    size_t floats_per_bucket = is_complex ? 4 : 2;
+    int data_bins = time_domain_data.size() / floats_per_bucket;
+
     for (int x = 0; x < plot_w; ++x) {
         int bin_start = x * data_bins / plot_w;
         int bin_end = (x + 1) * data_bins / plot_w;
         if (bin_end > data_bins) bin_end = data_bins;
         if (bin_start >= data_bins) bin_start = data_bins - 1;
         
-        double max_val = -1000.0;
-        double min_val = 1000.0;
-        for (int i = bin_start; i < bin_end; ++i) {
-            if (power_db[i] > max_val) max_val = power_db[i];
-            if (power_db[i] < min_val) min_val = power_db[i];
-        }
-        
-        if (min_val > 999.0) min_val = max_val;
-        
-        float norm_max = static_cast<float>((max_val - min_db) / (max_db - min_db));
-        norm_max = std::clamp(norm_max, 0.0f, 1.0f);
-        int y_max = plot_h - 1 - static_cast<int>(norm_max * (plot_h - 1));
-        
-        float norm_min = static_cast<float>((min_val - min_db) / (max_db - min_db));
-        norm_min = std::clamp(norm_min, 0.0f, 1.0f);
-        int y_min = plot_h - 1 - static_cast<int>(norm_min * (plot_h - 1));
-        
-        RGB current_color = get_cmap_color(norm_max);
-        RGB line_color = (fill_mode != "gradient") ? custom_fill_color : current_color;
-
-        draw_line(pixels, out_width, out_height, plot_x + x, plot_y + y_max, plot_x + x, plot_y + y_min, line_color);
-
-        if (x > 0) {
-            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + (y_max + y_min) / 2, line_color);
-        }
-        
-        if (fill_mode != "none") {
-            for (int fy = y_min + 1; fy < plot_h; ++fy) {
-                float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
-                RGB fill_color = (fill_mode == "solid") ? custom_fill_color : get_cmap_color(norm_fy);
-                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+        if (is_complex) {
+            float g_min_i = 1e9f, g_max_i = -1e9f;
+            float g_min_q = 1e9f, g_max_q = -1e9f;
+            for (int i = bin_start; i < bin_end; ++i) {
+                float min_i = time_domain_data[i * 4 + 0];
+                float min_q = time_domain_data[i * 4 + 1];
+                float max_i = time_domain_data[i * 4 + 2];
+                float max_q = time_domain_data[i * 4 + 3];
+                if (min_i < g_min_i) g_min_i = min_i;
+                if (max_i > g_max_i) g_max_i = max_i;
+                if (min_q < g_min_q) g_min_q = min_q;
+                if (max_q > g_max_q) g_max_q = max_q;
             }
+            
+            float norm_max_i = static_cast<float>((g_max_i - min_val) / (max_val - min_val));
+            float norm_min_i = static_cast<float>((g_min_i - min_val) / (max_val - min_val));
+            int y_max_i = plot_h - 1 - static_cast<int>(std::clamp(norm_max_i, 0.0f, 1.0f) * (plot_h - 1));
+            int y_min_i = plot_h - 1 - static_cast<int>(std::clamp(norm_min_i, 0.0f, 1.0f) * (plot_h - 1));
+            
+            float norm_max_q = static_cast<float>((g_max_q - min_val) / (max_val - min_val));
+            float norm_min_q = static_cast<float>((g_min_q - min_val) / (max_val - min_val));
+            int y_max_q = plot_h - 1 - static_cast<int>(std::clamp(norm_max_q, 0.0f, 1.0f) * (plot_h - 1));
+            int y_min_q = plot_h - 1 - static_cast<int>(std::clamp(norm_min_q, 0.0f, 1.0f) * (plot_h - 1));
+            
+            draw_line(pixels, out_width, out_height, plot_x + x, plot_y + y_max_i, plot_x + x, plot_y + y_min_i, color_i);
+            draw_line(pixels, out_width, out_height, plot_x + x, plot_y + y_max_q, plot_x + x, plot_y + y_min_q, color_q);
+        } else {
+            float g_min_v = 1e9f, g_max_v = -1e9f;
+            for (int i = bin_start; i < bin_end; ++i) {
+                float min_v = time_domain_data[i * 2 + 0];
+                float max_v = time_domain_data[i * 2 + 1];
+                if (min_v < g_min_v) g_min_v = min_v;
+                if (max_v > g_max_v) g_max_v = max_v;
+            }
+            
+            float norm_max_v = static_cast<float>((g_max_v - min_val) / (max_val - min_val));
+            float norm_min_v = static_cast<float>((g_min_v - min_val) / (max_val - min_val));
+            int y_max_v = plot_h - 1 - static_cast<int>(std::clamp(norm_max_v, 0.0f, 1.0f) * (plot_h - 1));
+            int y_min_v = plot_h - 1 - static_cast<int>(std::clamp(norm_min_v, 0.0f, 1.0f) * (plot_h - 1));
+            
+            draw_line(pixels, out_width, out_height, plot_x + x, plot_y + y_max_v, plot_x + x, plot_y + y_min_v, color_i);
         }
-        prev_x = x;
-        prev_y = (y_max + y_min) / 2;
     }
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }

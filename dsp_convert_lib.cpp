@@ -144,8 +144,8 @@ void run_convert_pipeline(const std::string& input_file, const std::string& outp
     BlueHeader hdr;
     std::memset(&hdr, 0, sizeof(BlueHeader));
     std::strncpy(hdr.version, "BLUE", 4);
-    std::strncpy(hdr.head_rep, "IEEE", 4);
-    std::strncpy(hdr.data_rep, "IEEE", 4);
+    std::strncpy(hdr.head_rep, "EEEI", 4);
+    std::strncpy(hdr.data_rep, "EEEI", 4);
     hdr.type = 1000;
     
     if (final_format.length() >= 2) {

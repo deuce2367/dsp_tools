@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "dsp_engine.hpp"
-#include "dsp_power.hpp"
+#include "dsp_time_domain.hpp"
 #include "plot_generator.hpp"
 #include "bluefile_io.hpp"
 #include "dsp_convert.hpp"
@@ -126,9 +126,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
        py::arg("quality_str")="normal", py::call_guard<py::gil_scoped_release>());
 
     
-    m.def("run_power", [](const std::string& input_file, const std::string& output_file, double start_time, double duration, size_t target_points) {
-        DspPower::generate_power_envelope(input_file, output_file, start_time, duration, target_points);
-        return true;
+    m.def("run_time_domain", [](const std::string& input_file, const std::string& output_file, double start_time, double duration, size_t target_points) {
+        DspTimeDomain::generate_time_domain_envelope(input_file, output_file, start_time, duration, target_points);
     }, py::arg("input_file"), py::arg("output_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::call_guard<py::gil_scoped_release>());
     
     m.def("run_fft_pipeline", [](const std::string& input_file, 
@@ -210,7 +209,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing,
-                                 bool plot_fft, bool plot_waterfall, bool plot_power, const std::string& colormap, int width, int height,
+                                 bool plot_fft, bool plot_waterfall, bool plot_time_domain, const std::string& colormap, int width, int height,
                                  const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex,
                                  double zmin, double zmax) {
         DspEngine engine(width);
@@ -271,32 +270,36 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                 avg_mag[i] /= num_frames;
             }
             PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 15, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
-                } else if (plot_power) {
-            std::string temp_file = "/tmp/temp_power_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".prm";
+        } else if (plot_time_domain) {
+            std::string temp_file = "/tmp/temp_td_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".prm";
             size_t target_pts = 10000;
-            DspPower::generate_power_envelope(input_file, temp_file, start_time, duration, target_pts);
+            DspTimeDomain::generate_time_domain_envelope(input_file, temp_file, start_time, duration, target_pts);
             
             BlueHeader hdr = read_bluefile_header(temp_file);
             MmapHandle mmap_in(temp_file);
             size_t data_offset = static_cast<size_t>(hdr.data_start);
-            size_t actual_points = hdr.data_size / sizeof(float);
+            size_t actual_floats = hdr.data_size / sizeof(float);
             
-            std::vector<float> power_db(actual_points);
+            std::vector<float> time_domain_data(actual_floats);
             float* in_ptr = reinterpret_cast<float*>(mmap_in.ptr + data_offset);
             
-            double actual_max_db = -200.0;
-            double actual_min_db = 200.0;
-            for (size_t i = 0; i < actual_points; ++i) {
-                power_db[i] = in_ptr[i];
-                if (power_db[i] > actual_max_db) actual_max_db = power_db[i];
-                if (power_db[i] < actual_min_db) actual_min_db = power_db[i];
+            double actual_max_val = -1000000.0;
+            double actual_min_val = 1000000.0;
+            for (size_t i = 0; i < actual_floats; ++i) {
+                time_domain_data[i] = in_ptr[i];
+                if (time_domain_data[i] > actual_max_val) actual_max_val = time_domain_data[i];
+                if (time_domain_data[i] < actual_min_val) actual_min_val = time_domain_data[i];
             }
             
+            double final_min_val = (zmin > -999.0) ? zmin : actual_min_val;
+            double final_max_val = (zmax < 999.0) ? zmax : actual_max_val;
             double act_start_time = start_time;
-            double final_min_db = (zmin > -999.0) ? zmin : (actual_min_db - 5.0);
-            double final_max_db = (zmax < 999.0) ? zmax : (actual_max_db + 5.0);
-
-            PlotGenerator::generate_fast_power_plot_mem(power_db, out_buffer, width, height, final_min_db, final_max_db, act_start_time, actual_points * hdr.xdelta, true, true, out_format, 10, 15, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
+            
+            bool is_cpx = (hdr.format[0] == 'C');
+            size_t floats_per_bucket = is_cpx ? 4 : 2;
+            size_t actual_buckets = actual_floats / floats_per_bucket;
+            
+            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, "#00FF00", "#0088FF");
             
             unlink(temp_file.c_str());
         }
@@ -304,5 +307,5 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_power"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
 }

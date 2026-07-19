@@ -80,11 +80,11 @@ public:
                                        const std::string& fill_mode = "gradient",
                                        const std::string& fill_color_hex = "#00FF00");
 
-    // Fast Power Plot rendering to memory buffer
-    static void generate_fast_power_plot_mem(const std::vector<float>& power_db,
+    // Fast Time Domain Plot rendering to memory buffer
+    static void generate_time_domain_plot_mem(const std::vector<float>& time_domain_data, bool is_complex,
                                        std::vector<uint8_t>& out_buffer,
                                        int out_width, int out_height,
-                                       double min_db, double max_db,
+                                       double min_val, double max_val,
                                        double start_time_sec, double duration_sec,
                                        bool draw_grid = true, bool draw_labels = true,
                                        const std::string& out_format = "png",
@@ -92,9 +92,9 @@ public:
                                        const std::string& title = "",
                                        int jpeg_quality = 90,
                                        int png_compression = 8,
-                                       const std::string& colormap_name = "jet",
                                        const std::string& font_path = "",
                                        const std::string& theme = "dark",
-                                       const std::string& fill_mode = "gradient",
-                                       const std::string& fill_color_hex = "#00FF00");
+                                       const std::string& color_i_hex = "#00FF00",
+                                       const std::string& color_q_hex = "#0088FF");
+
 };

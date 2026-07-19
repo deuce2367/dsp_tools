@@ -26,12 +26,12 @@ const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colo
           colormap: colormap,
           plot_fft: panel.subType === 'fft',
           plot_waterfall: panel.subType === 'waterfall',
-          plot_power: panel.subType === 'power',
+          plot_time_domain: panel.subType === 'time_domain',
           theme: theme,
           fill_mode: fillMode,
           fill_color: fillColor,
-          zmin: (zmin !== '' && panel.subType !== 'power') ? Number(zmin) : null,
-          zmax: (zmax !== '' && panel.subType !== 'power') ? Number(zmax) : null
+          zmin: panel.subType === 'time_domain' ? -1.0 : (zmin !== '' ? Number(zmin) : null),
+          zmax: panel.subType === 'time_domain' ? 1.0 : (zmax !== '' ? Number(zmax) : null)
         })
       });
       const data = await res.json();
@@ -441,8 +441,8 @@ function App() {
   };
 
   const handleStaticPlot = async (plotType) => {
-    const pId = plotType === 'fft' ? 'static-fft' : (plotType === 'power' ? 'static-power' : 'static-waterfall');
-    const pTitle = plotType === 'fft' ? 'Static Spectrum (FFT)' : (plotType === 'power' ? 'Static Power (dB)' : 'Static Waterfall (PSD)');
+    const pId = plotType === 'fft' ? 'static-fft' : (plotType === 'time_domain' ? 'static-time-domain' : 'static-waterfall');
+    const pTitle = plotType === 'fft' ? 'Static Spectrum (FFT)' : (plotType === 'time_domain' ? 'Static Time Domain' : 'Static Waterfall (PSD)');
     setPanels(prev => {
         const existingIdx = prev.findIndex(p => p.id === pId);
         if (existingIdx >= 0) {
@@ -496,12 +496,12 @@ function App() {
     setLoading(false);
   };
 
-    const handleInteractivePower = async (overrideFile = null) => {
+    const handleInteractiveTimeDomain = async (overrideFile = null) => {
     setLoading(true);
-    setZmin(-80); setZmax(-20);
+    setZmin(-1); setZmax(1);
     try {
       const activeFile = overrideFile || file;
-      const res = await fetch('/api/run/power', {
+      const res = await fetch('/api/run/time_domain', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -512,13 +512,13 @@ function App() {
         })
       });
       const data = await res.json();
-      if (!res.ok) alert("Error running Power computation: " + (data.detail || JSON.stringify(data)));
+      if (!res.ok) alert("Error running Time Domain computation: " + (data.detail || JSON.stringify(data)));
       else {
         setPanels(prev => {
-            if (prev.find(p => p.id === 'interactive-power')) {
-                return prev.map(p => p.id === 'interactive-power' ? { ...p, url: `/api/data/${data.output_file}` } : p);
+            if (prev.find(p => p.id === 'interactive-time-domain')) {
+                return prev.map(p => p.id === 'interactive-time-domain' ? { ...p, url: `/api/data/${data.output_file}` } : p);
             }
-            return [...prev, { id: 'interactive-power', type: 'interactive', subType: '1D', title: 'Interactive Power (dB)', url: `/api/data/${data.output_file}` }];
+            return [...prev, { id: 'interactive-time-domain', type: 'interactive', subType: '1D', title: 'Interactive Time Domain', url: `/api/data/${data.output_file}` }];
         });
       }
     } catch (e) { alert("Error: " + e); }
@@ -636,7 +636,7 @@ function App() {
               next.forEach(p => {
                   if (p.id === 'interactive-fft') handleInteractiveFFT(tunerOutName);
                   if (p.id === 'interactive-psd') handleInteractivePSD(tunerOutName);
-                  if (p.id === 'interactive-power') handleInteractivePower(tunerOutName);
+                  if (p.id === 'interactive-time-domain') handleInteractiveTimeDomain(tunerOutName);
               });
               return next;
           });
@@ -849,7 +849,7 @@ function App() {
           <div style={{display: 'flex', gap: '10px'}}>
             <button onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum (FFT)</button>
             <button onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall (PSD)</button>
-            <button onClick={() => handleInteractivePower()} disabled={loading}>Power (dB)</button>
+            <button onClick={() => handleInteractiveTimeDomain()} disabled={loading}>Time Domain</button>
           </div>
           
           {loading && <p style={{color: 'var(--accent-color)', fontWeight: 'bold', margin: '5px 0'}}>Processing...</p>}
@@ -912,7 +912,7 @@ function App() {
           <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
             <button onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum (FFT)</button>
             <button onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall (PSD)</button>
-            <button onClick={() => handleStaticPlot('power')} disabled={loading}>Power (dB)</button>
+            <button onClick={() => handleStaticPlot('time_domain')} disabled={loading}>Time Domain</button>
           </div>
           
         </div>
@@ -954,14 +954,14 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={panel.id === 'interactive-power' ? '' : zmin} zmax={panel.id === 'interactive-power' ? '' : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
+                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={panel.id === 'interactive-time-domain' ? -1 : zmin} zmax={panel.id === 'interactive-time-domain' ? 1 : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
                       ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
                         </div>
                       )}
                     </div>
-                    {panel.id !== 'interactive-power' && (
+                    {panel.id !== 'interactive-time-domain' && (
                       <>
                         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
                           <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
@@ -1007,10 +1007,10 @@ function App() {
                       smoothing={smoothing}
                       colormap={colormap}
                       theme={theme}
-                      fillMode={panel.subType === 'power' ? 'none' : fillMode}
-                      fillColor={panel.subType === 'power' ? fftColor : fillColor}
-                      zmin={panel.subType === 'power' ? '' : zmin}
-                      zmax={panel.subType === 'power' ? '' : zmax}
+                      fillMode={panel.subType === 'time_domain' ? 'none' : fillMode}
+                      fillColor={panel.subType === 'time_domain' ? fftColor : fillColor}
+                      zmin={panel.subType === 'time_domain' ? -1 : zmin}
+                      zmax={panel.subType === 'time_domain' ? 1 : zmax}
                     />
                   </div>
               )}

@@ -66,7 +66,7 @@ class PSDRequest(BaseModel):
     window_size: int = 1024
     smoothing: int = 1
 
-class PowerRequest(BaseModel):
+class TimeDomainRequest(BaseModel):
     input_file: str
     start_time: float = 0.0
     duration: float = 0.0
@@ -84,7 +84,7 @@ class PlotRequest(BaseModel):
     colormap: str = "jet"
     plot_fft: bool = True
     plot_waterfall: bool = True
-    plot_power: bool = False
+    plot_time_domain: bool = False
     width: int = 1024
     height: int = 512
     theme: str = "dark"
@@ -270,22 +270,20 @@ async def run_psd(req: PSDRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/run/power")
-async def run_power(req: PowerRequest):
+@app.post("/api/run/time_domain")
+async def run_time_domain(req: TimeDomainRequest):
     try:
-        in_path = os.path.join(DATA_DIR, req.input_file)
-        if not os.path.exists(in_path):
+        input_path = os.path.join(DATA_DIR, req.input_file)
+        if not os.path.exists(input_path):
             raise HTTPException(status_code=404, detail="Input file not found")
-
-        out_id = f"power_{uuid.uuid4().hex[:8]}.prm"
+            
+        out_id = f"td_{uuid.uuid4().hex[:8]}.prm"
         out_path = os.path.join(DATA_DIR, out_id)
-        await asyncio.to_thread(
-            dsp_wrapper.run_power,
-            in_path,
-            out_path,
-            req.start_time,
-            req.duration,
-            req.target_points
+        
+        await asyncio.get_event_loop().run_in_executor(
+            None, 
+            dsp_wrapper.run_time_domain, 
+            input_path, out_path, req.start_time, req.duration, req.target_points
         )
         return {"status": "success", "output_file": out_id}
     except Exception as e:
@@ -319,7 +317,8 @@ async def run_plot(req: PlotRequest):
             req.window_size,
             req.smoothing,
             req.plot_fft,
-            req.plot_waterfall, req.plot_power,
+            req.plot_waterfall, 
+            req.plot_time_domain,
             req.colormap,
             req.width,
             req.height,
