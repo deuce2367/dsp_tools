@@ -299,7 +299,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             size_t floats_per_bucket = is_cpx ? 4 : 2;
             size_t actual_buckets = actual_floats / floats_per_bucket;
             
-            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, "#00FF00", "#0088FF");
+            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, fill_color_hex, "#0088FF");
             
             unlink(temp_file.c_str());
         }

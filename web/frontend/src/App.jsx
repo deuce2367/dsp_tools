@@ -498,7 +498,6 @@ function App() {
 
     const handleInteractiveTimeDomain = async (overrideFile = null) => {
     setLoading(true);
-    setZmin(-1); setZmax(1);
     try {
       const activeFile = overrideFile || file;
       const res = await fetch('/api/run/time_domain', {
@@ -654,9 +653,9 @@ function App() {
         <h1>DSP Tools Interface</h1>
         <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
           <select value={layoutMode} onChange={e => setLayoutMode(e.target.value)} style={{width: 'auto', margin: 0}}>
-            <option value="auto">Layout: Auto</option>
-            <option value="horizontal">Layout: Horizontal</option>
-            <option value="vertical">Layout: Vertical</option>
+            <option value="auto">Stacking: Auto</option>
+            <option value="horizontal">Stacking: Horizontal</option>
+            <option value="vertical">Stacking: Vertical</option>
           </select>
           <a href="/docs" target="_blank" rel="noreferrer" style={{color: 'var(--text-color)', fontSize: '0.9rem', opacity: 0.7, textDecoration: 'none'}}>API (Swagger)</a>
           <button onClick={toggleTheme} style={{width: 'auto', margin: 0}}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>

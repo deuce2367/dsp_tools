@@ -99,15 +99,21 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
 
   useEffect(() => {
     if (sigplotInstance.current && type === '1D') {
-        const plot1d = sigplotInstance.current._plot1d;
-        if (plot1d && plot1d.lyr) {
-            const layers = plot1d.lyr;
-            if (layers.length > 0) {
-                for (let i = 0; i < layers.length; i++) {
-                    layers[i].color = fftColor;
+        try {
+            const plot = sigplotInstance.current;
+            const Gx = plot._Gx || plot._plot1d;
+            if (Gx && Gx.lyr) {
+                for (let i = 0; i < Gx.lyr.length; i++) {
+                    if (Gx.lyr[i]) {
+                        Gx.lyr[i].color = fftColor;
+                    }
                 }
-                sigplotInstance.current.refresh();
+                plot.refresh();
+            } else {
+                plot.change_settings({ color: fftColor });
             }
+        } catch(e) {
+            console.warn("Failed to update sigplot color dynamically:", e);
         }
     }
   }, [fftColor, type]);
