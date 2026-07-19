@@ -5,11 +5,24 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 
-# Media files
+# Media and data files
 *.wav
 *.mp3
 *.png
 *.jpg
+*.jpeg
+*.bin
+*.prm
+*.sigmf-meta
+*.sigmf-data
+
+# Python
+__pycache__/
+*.so
+
+# Node
+node_modules/
+package-lock.json
 
 # Editor / OS files
 .vscode/
@@ -18,3 +31,10 @@ Makefile
 
 # Executables
 dsp_plotter
+dsp_convert
+dsp_tuner
+dsp_fft
+dsp_psd
+dsp_filter
+dsp_whitener
+dsp_tests

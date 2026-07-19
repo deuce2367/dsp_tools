@@ -1,9 +1,12 @@
 #include "plot_generator.hpp"
 #include <iostream>
+#include <vector>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <iomanip>
+#include <cstdint>
 #include "embedded_font.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -239,7 +242,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                const std::string& title = "",
                                const std::string& font_path = "",
                                const std::string& theme = "dark") {
-    RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{200, 200, 200};
+    RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
     RGB grid_color = (theme == "light") ? RGB{0, 0, 0} : RGB{255, 255, 255};
     
     // Draw Grid and Box
@@ -357,18 +360,25 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 }
             }
         } else {
-            std::ostringstream ss_max, ss_min;
-            ss_max << std::fixed << std::setprecision(0) << max_db << " dB";
-            ss_min << std::fixed << std::setprecision(0) << min_db << " dB";
-            
-            draw_line(pixels, full_width, full_height, plot_x - text_scale, plot_y, plot_x, plot_y, axis_color);
-            draw_line(pixels, full_width, full_height, plot_x - text_scale, plot_y + plot_h - 1, plot_x, plot_y + plot_h - 1, axis_color);
-            
-            int text_width_max = get_text_width(ss_max.str(), text_scale, font_path);
-            int text_width_min = get_text_width(ss_min.str(), text_scale, font_path);
-            
-            draw_text(pixels, full_width, full_height, plot_x - text_width_max - 3 * text_scale, plot_y - 6 * text_scale, ss_max.str(), axis_color, text_scale, font_path);
-            draw_text(pixels, full_width, full_height, plot_x - text_width_min - 3 * text_scale, plot_y + plot_h - 6 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
+            double step_db = (max_db - min_db) / num_y_ticks;
+            for (int i = 0; i <= num_y_ticks; ++i) {
+                double db_val = max_db - (step_db * i);
+                int y_pos = plot_y + (plot_h * i) / num_y_ticks;
+                
+                std::ostringstream ss;
+                ss << std::fixed << std::setprecision(0) << db_val << " dB";
+                
+                // Draw tick mark
+                draw_line(pixels, full_width, full_height, plot_x - text_scale, y_pos, plot_x, y_pos, axis_color);
+                
+                int text_width = get_text_width(ss.str(), text_scale, font_path);
+                
+                // Adjust label position to avoid clipping at the bottom
+                int label_y = y_pos - 6 * text_scale;
+                if (i == num_y_ticks) label_y = y_pos - 12 * text_scale;
+                
+                draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, label_y, ss.str(), axis_color, text_scale, font_path);
+            }
         }
         
         // Draw Legend (Colorbar)
@@ -814,6 +824,149 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         }
         prev_x = x;
         prev_y = y;
+    }
+    save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
+}
+
+void PlotGenerator::generate_fast_power_plot_mem(const std::vector<float>& power_db,
+                                           std::vector<uint8_t>& out_buffer,
+                                           int out_width, int out_height,
+                                           double min_db, double max_db,
+                                           double start_time_sec, double duration_sec,
+                                           bool draw_grid, bool draw_labels,
+                                           const std::string& out_format,
+                                           int num_x_ticks, int num_y_ticks,
+                                           const std::string& title,
+                                           int jpeg_quality,
+                                           int png_compression,
+                                           const std::string& colormap_name,
+                                           const std::string& font_path,
+                                           const std::string& theme,
+                                           const std::string& fill_mode,
+                                           const std::string& fill_color_hex) {
+    if (power_db.empty() || out_width <= 0 || out_height <= 0) return;
+    unsigned char bg = (theme == "light") ? 255 : 10;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
+    int margin_left = draw_labels ? 50 * text_scale : 0;
+    int margin_bottom = draw_labels ? 28 * text_scale : 0;
+    int margin_top = draw_labels ? 30 * text_scale : 0;
+    int margin_right = draw_labels ? 25 * text_scale : 0;
+    int plot_x = margin_left;
+    int plot_y = margin_top;
+    int plot_w = out_width - margin_left - margin_right;
+    int plot_h = out_height - margin_top - margin_bottom;
+
+    // We can reuse the draw_axes_and_grid function. For X-axis, we want to label it as Time.
+    // However, draw_axes_and_grid treats X as frequency if bandwidth_mhz > 0.
+    // So we'll pass bandwidth_mhz = 0 to prevent the frequency labels, and draw our own time labels.
+    draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                       0.0, 0.0, "", 0.0, draw_grid, draw_labels, 
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme);
+
+    if (draw_labels) {
+        RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
+        double step_t = duration_sec / num_x_ticks;
+        int last_label_end_x = -1;
+        for (int i = 0; i <= num_x_ticks; ++i) {
+            double t = start_time_sec + step_t * i;
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(2) << t << "s";
+            
+            int x_pos = plot_x + (plot_w * i) / num_x_ticks;
+            int text_width = get_text_width(ss.str(), text_scale, font_path);
+            int draw_x_pos = x_pos - text_width / 2;
+            
+            draw_line(pixels, out_width, out_height, x_pos, plot_y + plot_h, x_pos, plot_y + plot_h + text_scale, axis_color);
+            
+            if (i != 0 && i != num_x_ticks) {
+                if (draw_x_pos < last_label_end_x + 5 * text_scale) continue;
+                std::ostringstream ss_last;
+                ss_last << std::fixed << std::setprecision(2) << start_time_sec + duration_sec << "s";
+                int last_width = get_text_width(ss_last.str(), text_scale, font_path);
+                int final_label_x = plot_x + plot_w - last_width / 2;
+                if (draw_x_pos + text_width + 5 * text_scale > final_label_x) continue;
+            }
+            
+            int y_pos = plot_y + plot_h + 2 * text_scale;
+            draw_text(pixels, out_width, out_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
+            last_label_end_x = draw_x_pos + text_width;
+        }
+        std::string x_axis_title = "Time (seconds)";
+        int title_scale = std::max(1, text_scale - 1);
+        int title_w = get_text_width(x_axis_title, title_scale, font_path);
+        int title_x = plot_x + plot_w / 2 - title_w / 2;
+        int title_y = plot_y + plot_h + 15 * text_scale;
+        draw_text(pixels, out_width, out_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
+    }
+
+    auto get_cmap_color = [&](float norm) -> RGB {
+        if (colormap_name == "electric") return Colormap::get_electric(norm);
+        if (colormap_name == "gqrx") return Colormap::get_gqrx(norm);
+        if (colormap_name == "websdr") return Colormap::get_websdr(norm);
+        if (colormap_name == "pablo") return Colormap::get_pablo(norm);
+        if (colormap_name == "turbo") return Colormap::get_turbo(norm);
+        if (colormap_name == "frog") return Colormap::get_frog(norm);
+        if (colormap_name == "grape") return Colormap::get_grape(norm);
+        if (colormap_name == "jet") return Colormap::get_jet(norm);
+        return Colormap::get_turbo(norm); 
+    };
+
+    auto parse_hex_color = [](const std::string& hex) -> RGB {
+        if (hex.size() == 7 && hex[0] == '#') {
+            int r, g, b;
+            if (sscanf(hex.c_str() + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                return RGB{(unsigned char)r, (unsigned char)g, (unsigned char)b};
+            }
+        }
+        return RGB{0, 255, 0};
+    };
+    RGB custom_fill_color = parse_hex_color(fill_color_hex);
+
+    int prev_x = -1;
+    int prev_y = -1;
+    int data_bins = power_db.size();
+    for (int x = 0; x < plot_w; ++x) {
+        int bin_start = x * data_bins / plot_w;
+        int bin_end = (x + 1) * data_bins / plot_w;
+        if (bin_end > data_bins) bin_end = data_bins;
+        if (bin_start >= data_bins) bin_start = data_bins - 1;
+        
+        double max_val = -1000.0;
+        double min_val = 1000.0;
+        for (int i = bin_start; i < bin_end; ++i) {
+            if (power_db[i] > max_val) max_val = power_db[i];
+            if (power_db[i] < min_val) min_val = power_db[i];
+        }
+        
+        if (min_val > 999.0) min_val = max_val;
+        
+        float norm_max = static_cast<float>((max_val - min_db) / (max_db - min_db));
+        norm_max = std::clamp(norm_max, 0.0f, 1.0f);
+        int y_max = plot_h - 1 - static_cast<int>(norm_max * (plot_h - 1));
+        
+        float norm_min = static_cast<float>((min_val - min_db) / (max_db - min_db));
+        norm_min = std::clamp(norm_min, 0.0f, 1.0f);
+        int y_min = plot_h - 1 - static_cast<int>(norm_min * (plot_h - 1));
+        
+        RGB current_color = get_cmap_color(norm_max);
+        RGB line_color = (fill_mode != "gradient") ? custom_fill_color : current_color;
+
+        draw_line(pixels, out_width, out_height, plot_x + x, plot_y + y_max, plot_x + x, plot_y + y_min, line_color);
+
+        if (x > 0) {
+            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + (y_max + y_min) / 2, line_color);
+        }
+        
+        if (fill_mode != "none") {
+            for (int fy = y_min + 1; fy < plot_h; ++fy) {
+                float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
+                RGB fill_color = (fill_mode == "solid") ? custom_fill_color : get_cmap_color(norm_fy);
+                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+            }
+        }
+        prev_x = x;
+        prev_y = (y_max + y_min) / 2;
     }
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }

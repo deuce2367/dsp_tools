@@ -44,7 +44,10 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
           } else if (onDataLoaded && layer) {
              // Auto-scaled! Tell parent what bounds were chosen
              if (type === '1D' && layer.ymin !== undefined && layer.ymax !== undefined) {
-                 onDataLoaded(layer.ymin, layer.ymax);
+                 let newYmin = layer.ymin - 5.0;
+                 let newYmax = layer.ymax + 5.0;
+                 sigplotInstance.current.change_settings({ymin: newYmin, ymax: newYmax});
+                 onDataLoaded(newYmin, newYmax);
              } else if (type === '2D' && layer.zmin !== undefined && layer.zmax !== undefined) {
                  onDataLoaded(layer.zmin, layer.zmax);
              }
@@ -63,7 +66,8 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
               xmin: evt.xmin,
               xmax: evt.xmax,
               ymin: evt.ymin,
-              ymax: evt.ymax
+              ymax: evt.ymax,
+              type: type
             });
           } catch(e) {}
         }
@@ -92,6 +96,21 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       sigplotInstance.current.change_settings({ cmap: sigplotColormap });
     }
   }, [sigplotColormap]);
+
+  useEffect(() => {
+    if (sigplotInstance.current && type === '1D') {
+        const plot1d = sigplotInstance.current._plot1d;
+        if (plot1d && plot1d.lyr) {
+            const layers = plot1d.lyr;
+            if (layers.length > 0) {
+                for (let i = 0; i < layers.length; i++) {
+                    layers[i].color = fftColor;
+                }
+                sigplotInstance.current.refresh();
+            }
+        }
+    }
+  }, [fftColor, type]);
 
   useEffect(() => {
     if (sigplotInstance.current && zmin !== '' && zmax !== '') {

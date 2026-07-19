@@ -1,18 +1,92 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import SigPlot from './components/SigPlot.jsx';
 import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
+import debounce from 'lodash.debounce';
+
+const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax }) => {
+  const containerRef = useRef(null);
+  const [imgUrl, setImgUrl] = useState(null);
+  const [error, setError] = useState(null);
+
+  const fetchPlot = useCallback(async (width, height) => {
+    if (!activeFile || width === 0 || height === 0) return;
+    try {
+      const res = await fetch('/api/run/plot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_file: activeFile,
+          center_freq: Number(centerFreq),
+          zoom_bw: 0,
+          width: Math.floor(width),
+          height: Math.floor(height),
+          window_size: windowSize === 'auto' || windowSize === '' ? (Math.pow(2, Math.round(Math.log2(width)))) : Number(windowSize),
+          smoothing: smoothing,
+          colormap: colormap,
+          plot_fft: panel.subType === 'fft',
+          plot_waterfall: panel.subType === 'waterfall',
+          plot_power: panel.subType === 'power',
+          theme: theme,
+          fill_mode: fillMode,
+          fill_color: fillColor,
+          zmin: (zmin !== '' && panel.subType !== 'power') ? Number(zmin) : null,
+          zmax: (zmax !== '' && panel.subType !== 'power') ? Number(zmax) : null
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.output_file) {
+        setImgUrl(`/api/data/${data.output_file}?t=${Date.now()}`);
+        setError(null);
+      } else {
+        setError(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail));
+      }
+    } catch (err) {
+      setError(err.toString());
+    }
+  }, [panel.subType, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    fetchPlot(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    
+    const debouncedFetch = debounce((entries) => {
+      const { width, height } = entries[0].contentRect;
+      fetchPlot(width, height);
+    }, 500);
+
+    const resizeObserver = new ResizeObserver(debouncedFetch);
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      debouncedFetch.cancel();
+    };
+  }, [fetchPlot]);
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      {imgUrl ? (
+        <img src={imgUrl} alt={panel.title} style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', position: 'absolute', top: 0, left: 0 }} />
+      ) : error ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'red' }}>{error}</div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-color)' }}>Loading plot...</div>
+      )}
+    </div>
+  );
+};
+
 const formatJ1950ToISO = (timecode) => {
   if (!timecode) return '0';
   const val = Number(timecode);
-  if (val < 1e8) return `${val}`; // Small number, not a timestamp
-  // Convert J1950 to J1970 UNIX timestamp
+  if (val < 1e8) return `${val}`; 
   const unixTime = val - 631152000;
   try {
     const dt = new Date(Math.floor(unixTime) * 1000);
     let iso = dt.toISOString();
     let fracStr = (val % 1).toFixed(6).substring(2);
-    // Replace the millisecond part with our 6-digit fractional part
     return iso.replace(/\.\d+Z$/, `.${fracStr}Z`);
   } catch(e) {
     return `${val}`;
@@ -93,9 +167,7 @@ function App() {
   const [imagePlot, setImagePlot] = useState('');
   const [sigplotUrl, setSigplotUrl] = useState('');
   const [sigplotType, setSigplotType] = useState('1D');
-  const [panels, setPanels] = useState([
-    { id: 'static-waterfall', type: 'static', subType: 'waterfall', title: 'Static Waterfall (PSD)', url: '' }
-  ]);
+  const [panels, setPanels] = useState([]);
   const [layoutMode, setLayoutMode] = useState('auto');
 
   const [staticPlotType, setStaticPlotType] = useState('');
@@ -140,14 +212,6 @@ function App() {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  useEffect(() => {
-    panels.forEach(p => {
-        if (p.type === 'static') {
-            handleStaticPlot(p.subType === 'fft');
-        }
-    });
-  }, [theme]);
-
   const fetchFiles = async () => {
     try {
       const res = await fetch('/api/files');
@@ -181,7 +245,7 @@ function App() {
           if (data.center_freq !== undefined) {
             setCenterFreq(data.center_freq);
           }
-          setZoomBounds(null); // Reset bounds when file changes
+          setZoomBounds(null);
         } else {
           setFileInfo(null);
         }
@@ -215,7 +279,7 @@ function App() {
           const numChannels = view.getUint16(22, true);
           const sampleRate = view.getUint32(24, true);
           const bitsPerSample = view.getUint16(34, true);
-          let formatStr = 'CI'; // default
+          let formatStr = 'CI'; 
           if (numChannels === 2 && bitsPerSample === 32) formatStr = 'CF';
           else if (numChannels === 1 && bitsPerSample === 32) formatStr = 'SF';
           else if (numChannels === 2 && bitsPerSample === 16) formatStr = 'CI';
@@ -254,7 +318,7 @@ function App() {
     }
     
     setShowImportModal(true);
-    e.target.value = null; // reset input
+    e.target.value = null;
   };
 
   const startImport = () => {
@@ -352,29 +416,14 @@ function App() {
       });
       if (res.ok) {
         setIsEditingInfo(false);
-        // Refresh file info
         const infoRes = await fetch(`/api/info/${file}`);
-        let newFreq = centerFreq;
         if (infoRes.ok) {
           const data = await infoRes.json();
           setFileInfo(data);
           if (data.center_freq !== undefined) {
             setCenterFreq(data.center_freq);
-            newFreq = data.center_freq;
           }
         }
-        
-        // Force refresh plots
-        setPanels(prev => {
-            prev.forEach(p => {
-                if (p.id === 'interactive-fft') handleInteractiveFFT(newFreq);
-                if (p.id === 'interactive-psd') handleInteractivePSD(newFreq);
-                if (p.id === 'static-fft') handleStaticPlot(true, newFreq);
-                if (p.id === 'static-waterfall') handleStaticPlot(false, newFreq);
-            });
-            return prev;
-        });
-
       } else {
         const data = await res.json();
         alert("Update failed: " + (data.detail || "Unknown error"));
@@ -387,75 +436,35 @@ function App() {
   const getComputedFftSize = (val, ref, isInteractive = false) => {
     if (val !== 'auto' && val !== '') return Number(val);
     if (!ref.current) return isInteractive ? 4096 : 1024;
-    // Nearest power of 2 for FFT size based on panel width
     let base = Math.pow(2, Math.round(Math.log2(ref.current.clientWidth)));
     return isInteractive ? base * 4 : base;
   };
 
-  const handleStaticPlot = async (isFft, overrideFreq = null, targetFile = null) => {
-    setLoading(true);
-    try {
-      const activeFile = targetFile || file;
-      const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, false);
-      const res = await fetch('/api/run/plot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input_file: activeFile,
-          center_freq: overrideFreq !== null ? Number(overrideFreq) : Number(centerFreq),
-          zoom_bw: 0,
-          width: 800,
-          height: 600,
-          window_size: reqWindowSize,
-          smoothing: smoothing,
-          colormap: colormap,
-          plot_fft: isFft,
-          plot_waterfall: !isFft,
-          theme: theme,
-          fill_mode: fillMode,
-          fill_color: fillColor,
-          zmin: zmin !== '' ? Number(zmin) : null,
-          zmax: zmax !== '' ? Number(zmax) : null
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert("Error from server:\n" + (data.detail || JSON.stringify(data)));
-        setLoading(false);
-        return;
-      }
-      if (data.output_file) {
-        const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
-        const pId = isFft ? 'static-fft' : 'static-waterfall';
-        const pTitle = isFft ? 'Static Spectrum (FFT)' : 'Static Waterfall (PSD)';
-        setPanels(prev => {
-            const existingIdx = prev.findIndex(p => p.id === pId);
-            if (existingIdx >= 0) {
-                const next = [...prev];
-                next[existingIdx] = { ...next[existingIdx], url: newUrl };
-                return next;
-            } else {
-                return [...prev, { id: pId, type: 'static', subType: isFft ? 'fft' : 'waterfall', title: pTitle, url: newUrl }];
-            }
-        });
-      }
-    } catch (e) {
-      alert("Error generating plot: " + e);
-    }
-    setLoading(false);
+  const handleStaticPlot = async (plotType) => {
+    const pId = plotType === 'fft' ? 'static-fft' : (plotType === 'power' ? 'static-power' : 'static-waterfall');
+    const pTitle = plotType === 'fft' ? 'Static Spectrum (FFT)' : (plotType === 'power' ? 'Static Power (dB)' : 'Static Waterfall (PSD)');
+    setPanels(prev => {
+        const existingIdx = prev.findIndex(p => p.id === pId);
+        if (existingIdx >= 0) {
+            return prev;
+        } else {
+            return [...prev, { id: pId, type: 'static', subType: plotType, title: pTitle }];
+        }
+    });
   };
 
-  const handleInteractivePSD = async (overrideFreq = null, targetFile = null) => {
+  const handleInteractivePSD = async (overrideFile = null) => {
     setLoading(true);
+    setZmin(-80); setZmax(-20);
     try {
-      const activeFile = targetFile || file;
+      const activeFile = overrideFile || file;
       const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
       const res = await fetch('/api/run/psd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: activeFile,
-          center_freq: (overrideFreq !== null && typeof overrideFreq !== 'object') ? Number(overrideFreq) : Number(centerFreq),
+          center_freq: Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -487,17 +496,47 @@ function App() {
     setLoading(false);
   };
 
-  const handleInteractiveFFT = async (overrideFreq = null, targetFile = null) => {
+    const handleInteractivePower = async (overrideFile = null) => {
     setLoading(true);
+    setZmin(-80); setZmax(-20);
     try {
-      const activeFile = targetFile || file;
+      const activeFile = overrideFile || file;
+      const res = await fetch('/api/run/power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_file: activeFile,
+          start_time: 0.0,
+          duration: 0.0,
+          target_points: 10000
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) alert("Error running Power computation: " + (data.detail || JSON.stringify(data)));
+      else {
+        setPanels(prev => {
+            if (prev.find(p => p.id === 'interactive-power')) {
+                return prev.map(p => p.id === 'interactive-power' ? { ...p, url: `/api/data/${data.output_file}` } : p);
+            }
+            return [...prev, { id: 'interactive-power', type: 'interactive', subType: '1D', title: 'Interactive Power (dB)', url: `/api/data/${data.output_file}` }];
+        });
+      }
+    } catch (e) { alert("Error: " + e); }
+    setLoading(false);
+  };
+
+  const handleInteractiveFFT = async (overrideFile = null) => {
+    setLoading(true);
+    setZmin(-80); setZmax(-20);
+    try {
+      const activeFile = overrideFile || file;
       const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
       const res = await fetch('/api/run/fft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: activeFile,
-          center_freq: (overrideFreq !== null && typeof overrideFreq !== 'object') ? Number(overrideFreq) : Number(centerFreq),
+          center_freq: Number(centerFreq),
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -530,12 +569,8 @@ function App() {
   };
 
   const handleDataLoaded = (min_val, max_val) => {
-    // Round and add 20dB padding for slider bounds
-    const boundsMin = Math.floor(min_val - 20);
-    const boundsMax = Math.ceil(max_val + 20);
-    setGainBounds([boundsMin, boundsMax]);
-    // Don't auto-set zmin/zmax here, leave them empty to allow auto-scaling initially
-    // but the slider will display the bounds.
+    // Left empty since we want to keep static -150 to 0 bounds for the gain sliders
+    // and not overwrite them with auto-scaled data min/max values.
   };
 
   const handleZoom = (bounds) => {
@@ -554,14 +589,13 @@ function App() {
     
     let start = 0;
     let dur = 0;
-    if (sigplotType === '2D') {
+    if (zoomBounds.type === '2D') {
       start = Math.min(ymin, ymax);
       dur = Math.abs(ymax - ymin);
     }
     
     setTunerParams({center, bw, start, dur});
     
-    // Propose reasonable name
     let baseName = file.substring(0, file.lastIndexOf('.'));
     if (!baseName) baseName = file;
     let proposed = `${baseName}_tuned_${center.toFixed(3)}MHz_${bw.toFixed(3)}MHz.prm`;
@@ -580,9 +614,9 @@ function App() {
         body: JSON.stringify({
           input_file: file,
           output_file: tunerOutName,
-          center_freq: tunerParams.center * 1e6, // zoom bounds are in MHz, convert to Hz
+          center_freq: tunerParams.center * 1e6, 
           bandwidth: tunerParams.bw * 1e6,
-          start_time: tunerParams.start,
+          start_time: tunerParams.start > 1e8 ? tunerParams.start - (fileInfo?.timecode || 0) : tunerParams.start,
           duration: tunerParams.dur,
           file_center: Number(centerFreq) * 1e6,
           quality: 'normal'
@@ -594,19 +628,17 @@ function App() {
       } else {
         await fetchFiles();
         setFile(tunerOutName);
-        setShowTunerModal(false);
-        setZoomBounds(null); // Reset bounds
+        setZoomBounds(null);
         
-        // Refresh the plot to show the newly tuned data
         setTimeout(() => {
           setPanels(prev => {
-              prev.forEach(p => {
-                  if (p.id === 'interactive-fft') handleInteractiveFFT(tunerParams.center, tunerOutName);
-                  if (p.id === 'interactive-psd') handleInteractivePSD(tunerParams.center, tunerOutName);
-                  if (p.id === 'static-fft') handleStaticPlot(true, tunerParams.center, tunerOutName);
-                  if (p.id === 'static-waterfall') handleStaticPlot(false, tunerParams.center, tunerOutName);
+              const next = [...prev];
+              next.forEach(p => {
+                  if (p.id === 'interactive-fft') handleInteractiveFFT(tunerOutName);
+                  if (p.id === 'interactive-psd') handleInteractivePSD(tunerOutName);
+                  if (p.id === 'interactive-power') handleInteractivePower(tunerOutName);
               });
-              return prev;
+              return next;
           });
         }, 300);
       }
@@ -632,7 +664,6 @@ function App() {
       </div>
       <div className="content">
         
-        {/* Controls Panel */}
         <div className="panel" style={{flex: 1, overflowY: 'auto'}}>
           <h2 style={{marginTop: 0, fontSize: '1.2rem'}}>Controls</h2>
           <div className="form-group">
@@ -818,6 +849,7 @@ function App() {
           <div style={{display: 'flex', gap: '10px'}}>
             <button onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum (FFT)</button>
             <button onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall (PSD)</button>
+            <button onClick={() => handleInteractivePower()} disabled={loading}>Power (dB)</button>
           </div>
           
           {loading && <p style={{color: 'var(--accent-color)', fontWeight: 'bold', margin: '5px 0'}}>Processing...</p>}
@@ -878,30 +910,36 @@ function App() {
           </div>
 
           <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-            <button onClick={() => handleStaticPlot(true)} disabled={loading}>Spectrum (FFT)</button>
-            <button onClick={() => handleStaticPlot(false)} disabled={loading}>Waterfall (PSD)</button>
+            <button onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum (FFT)</button>
+            <button onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall (PSD)</button>
+            <button onClick={() => handleStaticPlot('power')} disabled={loading}>Power (dB)</button>
           </div>
           
         </div>
 
-        
-        {/* Visualization Panel */}
         <div className="plot-container" style={{
             flex: 3, 
             display: 'grid', 
             gap: '10px',
-            gridTemplateColumns: panels.length === 1 ? '1fr' : 
+            gridTemplateColumns: panels.length === 0 ? '1fr' :
+                                 panels.length === 1 ? '1fr' : 
                                  panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr 1fr' : '1fr') :
                                  panels.length === 3 ? (layoutMode === 'vertical' ? '1fr' : '1fr 1fr 1fr') :
                                  panels.length === 4 ? '1fr 1fr' :
                                  panels.length <= 6 ? '1fr 1fr 1fr' :
                                  '1fr 1fr 1fr 1fr',
-            gridTemplateRows: panels.length === 1 ? '1fr' :
+            gridTemplateRows: panels.length === 0 ? '1fr' :
+                              panels.length === 1 ? '1fr' :
                               panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr' : '1fr 1fr') :
                               panels.length === 3 ? (layoutMode === 'vertical' ? '1fr 1fr 1fr' : '1fr') :
                               panels.length <= 6 ? '1fr 1fr' :
                               '1fr 1fr 1fr',
         }}>
+          {panels.length === 0 && (
+            <div className="panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img src="/logo.jpg" alt="DSP Tools Logo" style={{maxWidth: '50%', maxHeight: '50%', objectFit: 'contain', opacity: 0.8}} />
+            </div>
+          )}
           {panels.map(panel => (
             <div key={panel.id} className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px'}}>
@@ -916,65 +954,68 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={zmin} zmax={zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={setZoomBounds} />
+                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={panel.id === 'interactive-power' ? '' : zmin} zmax={panel.id === 'interactive-power' ? '' : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
                       ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
                         </div>
                       )}
                     </div>
-                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
-                      <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
-                    </div>
+                    {panel.id !== 'interactive-power' && (
+                      <>
+                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
+                          <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
+                        </div>
 
-                    <div style={{width: '35px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '5px 0'}}>
-                      <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '8px'}}>{zmax === '' ? 'Auto' : zmax}</div>
-                      <div style={{flex: 1, width: '100%', display: 'flex', justifyContent: 'center'}}>
-                        <Slider 
-                          vertical 
-                          range 
-                          min={gainBounds[0]} 
-                          max={gainBounds[1]} 
-                          value={[
-                            zmin === '' ? gainBounds[0] + 10 : Number(zmin), 
-                            zmax === '' ? gainBounds[1] - 10 : Number(zmax)
-                          ]} 
-                          onChange={(val) => { setZmin(val[0]); setZmax(val[1]); }}
-                          handleStyle={[
-                            { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' },
-                            { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' }
-                          ]}
-                          activeHandleStyle={[
-                            { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 },
-                            { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 }
-                          ]}
-                          trackStyle={[{ backgroundColor: 'var(--accent-color)' }]}
-                          railStyle={{ backgroundColor: 'var(--border-color)' }}
-                        />
-                      </div>
-                      <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginTop: '8px'}}>{zmin === '' ? 'Auto' : zmin}</div>
-                    </div>
+                        <div style={{width: '35px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '5px 0'}}>
+                          <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '8px'}}>{zmax === '' ? 'Auto' : zmax}</div>
+                          <div style={{flex: 1, width: '100%', display: 'flex', justifyContent: 'center'}}>
+                            <Slider 
+                              vertical 
+                              range 
+                              min={gainBounds[0]} 
+                              max={gainBounds[1]} 
+                              value={[
+                                zmin === '' ? gainBounds[0] + 10 : Number(zmin), 
+                                zmax === '' ? gainBounds[1] - 10 : Number(zmax)
+                              ]} 
+                              onChange={(val) => { setZmin(val[0]); setZmax(val[1]); }}
+                              handleStyle={[
+                                { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' },
+                                { width: 16, height: 16, borderRadius: 2, left: 5, backgroundColor: '#ffd700', borderColor: '#ffd700', zIndex: 100, cursor: 'ns-resize', opacity: 1, boxShadow: 'none' }
+                              ]}
+                              activeHandleStyle={[
+                                { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 },
+                                { backgroundColor: '#ffd700', borderColor: '#ffd700', boxShadow: 'none', width: 16, height: 16, borderRadius: 2, left: 5, zIndex: 100 }
+                              ]}
+                              trackStyle={[{ backgroundColor: 'var(--accent-color)' }]}
+                              railStyle={{ backgroundColor: 'var(--border-color)' }}
+                            />
+                          </div>
+                          <div style={{fontSize: '0.7rem', fontWeight: 'bold', marginTop: '8px'}}>{zmin === '' ? 'Auto' : zmin}</div>
+                        </div>
+                      </>
+                    )}
                   </div>
               ) : (
                   <div style={{flex: 1, position: 'relative', minHeight: '200px', overflow: 'hidden'}}>
-                    {panel.url ? (
-                      <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0}}>
-                        <img src={panel.url} alt="DSP Plotter Output" style={{width: '100%', height: '100%', objectFit: 'fill', border: '1px solid var(--border-color)', borderRadius: '4px', boxSizing: 'border-box'}} />
-                      </div>
-                    ) : (
-                      <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                        <p style={{margin: 0}}>Select static plot to view image.</p>
-                      </div>
-                    )}
+                    <StaticPlot 
+                      panel={panel}
+                      activeFile={file}
+                      centerFreq={centerFreq}
+                      windowSize={windowSize}
+                      smoothing={smoothing}
+                      colormap={colormap}
+                      theme={theme}
+                      fillMode={panel.subType === 'power' ? 'none' : fillMode}
+                      fillColor={panel.subType === 'power' ? fftColor : fillColor}
+                      zmin={panel.subType === 'power' ? '' : zmin}
+                      zmax={panel.subType === 'power' ? '' : zmax}
+                    />
                   </div>
               )}
             </div>
           ))}
-          {panels.length === 0 && (
-             <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, background: 'var(--panel-bg)', borderRadius: '8px', border: '1px dashed var(--border-color)'}}>
-                 <h2 style={{opacity: 0.5}}>No panels open. Select an option from Controls.</h2>
-             </div>
-          )}
         </div>
 
       </div>

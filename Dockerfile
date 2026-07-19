@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY CMakeLists.txt *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN mkdir -p build && cd build && cmake .. && make -j$(nproc)
+RUN mkdir -p build && cd build && cmake .. && make -j4
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder
