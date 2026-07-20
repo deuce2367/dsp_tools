@@ -8,7 +8,7 @@
 #include <vector>
 
 template<typename T>
-void time_domain_data(const std::string& input_file, const std::string& output_file, double start_time, double duration, size_t target_points, double norm_factor) {
+std::vector<uint8_t> time_domain_data(const std::string& input_file, double start_time, double duration, size_t target_points, double norm_factor) {
     BlueHeader hdr = read_bluefile_header(input_file);
     MmapHandle mmap_in(input_file);
     
@@ -111,20 +111,19 @@ void time_domain_data(const std::string& input_file, const std::string& output_f
     
     // Write out bluefile
     hdr.type = 1000; // Type 1000 is for 1D generic data (used by SigPlot)
-    write_bluefile_header(output_file, hdr);
     
-    FILE* fout = fopen(output_file.c_str(), "ab");
-    if (!fout) throw std::runtime_error("Could not open output file for appending: " + output_file);
+    std::vector<uint8_t> out_buffer;
+    write_bluefile_header_mem(out_buffer, hdr);
     
-    fwrite(time_domain_out.data(), sizeof(float), time_domain_out.size(), fout);
-    fclose(fout);
+    const uint8_t* data_ptr = reinterpret_cast<const uint8_t*>(time_domain_out.data());
+    out_buffer.insert(out_buffer.end(), data_ptr, data_ptr + (time_domain_out.size() * sizeof(float)));
     
-    spdlog::info("Time domain envelope successfully written to {}", output_file);
+    spdlog::info("Time domain envelope successfully generated in memory");
+    return out_buffer;
 }
 
-void DspTimeDomain::generate_time_domain_envelope(
+std::vector<uint8_t> DspTimeDomain::generate_time_domain_envelope(
     const std::string& input_file,
-    const std::string& output_file,
     double start_time,
     double duration,
     size_t target_points
@@ -138,15 +137,15 @@ void DspTimeDomain::generate_time_domain_envelope(
     else if (data_type == 'L') norm_factor = 2147483648.0;
 
     if (data_type == 'B') {
-        time_domain_data<int8_t>(input_file, output_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int8_t>(input_file, start_time, duration, target_points, norm_factor);
     } else if (data_type == 'I') {
-        time_domain_data<int16_t>(input_file, output_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int16_t>(input_file, start_time, duration, target_points, norm_factor);
     } else if (data_type == 'L') {
-        time_domain_data<int32_t>(input_file, output_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int32_t>(input_file, start_time, duration, target_points, norm_factor);
     } else if (data_type == 'F') {
-        time_domain_data<float>(input_file, output_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<float>(input_file, start_time, duration, target_points, norm_factor);
     } else if (data_type == 'D') {
-        time_domain_data<double>(input_file, output_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<double>(input_file, start_time, duration, target_points, norm_factor);
     } else {
         throw std::runtime_error("Unsupported data format type: " + std::string(1, data_type));
     }

@@ -55,10 +55,10 @@ def run_tuner(input_file: str, output_file: str, center: float, bandwidth: float
     except Exception as e:
         raise RuntimeError(f"Tuner Pipeline failed: {e}")
 
-def run_time_domain(input_file: str, output_file: str, start_time: float = 0.0, duration: float = 0.0, target_points: int = 10000):
-    """Runs time domain envelope pipeline via native python bindings."""
+def run_time_domain(input_file: str, start_time: float = 0.0, duration: float = 0.0, target_points: int = 10000) -> bytes:
+    """Runs time domain envelope pipeline via native python bindings and returns bytes."""
     try:
         import dsp_plotter_py
-        dsp_plotter_py.run_time_domain(input_file, output_file, start_time, duration, target_points)
+        return dsp_plotter_py.run_time_domain(input_file, start_time, duration, target_points)
     except Exception as e:
         raise RuntimeError(f"Time Domain Pipeline failed: {e}")

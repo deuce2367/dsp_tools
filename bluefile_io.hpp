@@ -90,6 +90,11 @@ inline void write_bluefile_header(const std::string& filename, const BlueHeader&
     close(fd);
 }
 
+inline void write_bluefile_header_mem(std::vector<uint8_t>& buffer, const BlueHeader& hdr) {
+    const uint8_t* hdr_ptr = reinterpret_cast<const uint8_t*>(&hdr);
+    buffer.insert(buffer.end(), hdr_ptr, hdr_ptr + sizeof(BlueHeader));
+}
+
 inline BlueHeader read_bluefile_header(const std::string& filename) {
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) throw std::runtime_error("Cannot open BLUE file: " + filename);

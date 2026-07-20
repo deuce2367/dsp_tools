@@ -278,13 +278,11 @@ async def run_time_domain(req: TimeDomainRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
             
         out_id = f"td_{uuid.uuid4().hex[:8]}.prm"
-        out_path = os.path.join(DATA_DIR, out_id)
-        
-        await asyncio.get_event_loop().run_in_executor(
-            None, 
+        data = await asyncio.to_thread(
             dsp_wrapper.run_time_domain, 
-            input_path, out_path, req.start_time, req.duration, req.target_points
+            input_path, req.start_time, req.duration, req.target_points
         )
+        add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

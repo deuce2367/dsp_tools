@@ -241,7 +241,9 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                const std::string& colormap = "",
                                const std::string& title = "",
                                const std::string& font_path = "",
-                               const std::string& theme = "dark") {
+                               const std::string& theme = "dark",
+                               bool is_db = true,
+                               const std::string& x_axis_title = "Frequency (MHz)") {
     RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
     RGB grid_color = (theme == "light") ? RGB{0, 0, 0} : RGB{255, 255, 255};
     
@@ -306,7 +308,6 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 last_label_end_x = draw_x_pos + text_width;
             }
             
-            std::string x_axis_title = "Frequency (MHz)";
             int title_scale = std::max(1, text_scale - 1);
             int title_w = get_text_width(x_axis_title, title_scale, font_path);
             int title_x = plot_x + plot_w / 2 - title_w / 2;
@@ -366,7 +367,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 int y_pos = plot_y + (plot_h * i) / num_y_ticks;
                 
                 std::ostringstream ss;
-                ss << std::fixed << std::setprecision(0) << db_val << " dB";
+                ss << std::fixed << std::setprecision(0) << db_val;
+                if (is_db) ss << " dB";
                 
                 // Draw tick mark
                 draw_line(pixels, full_width, full_height, plot_x - text_scale, y_pos, plot_x, y_pos, axis_color);
@@ -419,7 +421,9 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
             
             // Draw 'dB' at the top of the colorbar
-            draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale, font_path);
+            if (is_db) {
+                draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale, font_path);
+            }
         }
         
         // Draw Title
@@ -858,7 +862,7 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
 
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        0.0, 0.0, "", 0.0, draw_grid, draw_labels, 
-                       false, max_val, min_val, num_x_ticks, num_y_ticks, "", title, font_path, theme);
+                       false, max_val, min_val, num_x_ticks, num_y_ticks, "", title, font_path, theme, false, "Time (seconds)");
 
     if (draw_labels) {
         RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
@@ -888,11 +892,11 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
             draw_text(pixels, out_width, out_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
             last_label_end_x = draw_x_pos + text_width;
         }
+        int title_y = plot_y + plot_h + 15 * text_scale;
         std::string x_axis_title = "Time (seconds)";
         int title_scale = std::max(1, text_scale - 1);
         int title_w = get_text_width(x_axis_title, title_scale, font_path);
         int title_x = plot_x + plot_w / 2 - title_w / 2;
-        int title_y = plot_y + plot_h + 15 * text_scale;
         draw_text(pixels, out_width, out_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
     }
 

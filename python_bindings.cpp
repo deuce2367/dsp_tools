@@ -126,9 +126,11 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
        py::arg("quality_str")="normal", py::call_guard<py::gil_scoped_release>());
 
     
-    m.def("run_time_domain", [](const std::string& input_file, const std::string& output_file, double start_time, double duration, size_t target_points) {
-        DspTimeDomain::generate_time_domain_envelope(input_file, output_file, start_time, duration, target_points);
-    }, py::arg("input_file"), py::arg("output_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::call_guard<py::gil_scoped_release>());
+    m.def("run_time_domain", [](const std::string& input_file, double start_time, double duration, size_t target_points) {
+        std::vector<uint8_t> out_buffer = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_points);
+        std::string buffer(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        return py::bytes(buffer);
+    }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::call_guard<py::gil_scoped_release>());
     
     m.def("run_fft_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
@@ -271,17 +273,16 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             }
             PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 15, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
         } else if (plot_time_domain) {
-            std::string temp_file = "/tmp/temp_td_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".prm";
             size_t target_pts = 10000;
-            DspTimeDomain::generate_time_domain_envelope(input_file, temp_file, start_time, duration, target_pts);
+            std::vector<uint8_t> td_buf = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_pts);
             
-            BlueHeader hdr = read_bluefile_header(temp_file);
-            MmapHandle mmap_in(temp_file);
+            BlueHeader hdr;
+            std::memcpy(&hdr, td_buf.data(), sizeof(BlueHeader));
             size_t data_offset = static_cast<size_t>(hdr.data_start);
             size_t actual_floats = hdr.data_size / sizeof(float);
             
             std::vector<float> time_domain_data(actual_floats);
-            float* in_ptr = reinterpret_cast<float*>(mmap_in.ptr + data_offset);
+            const float* in_ptr = reinterpret_cast<const float*>(td_buf.data() + data_offset);
             
             double actual_max_val = -1000000.0;
             double actual_min_val = 1000000.0;
@@ -300,8 +301,6 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             size_t actual_buckets = actual_floats / floats_per_bucket;
             
             PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, fill_color_hex, "#0088FF");
-            
-            unlink(temp_file.c_str());
         }
 
         
