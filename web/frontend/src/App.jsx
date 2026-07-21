@@ -157,9 +157,8 @@ function App() {
   const [windowSize, setWindowSize] = useState(4096);
   const [smoothing, setSmoothing] = useState(8);
   const [colormap, setColormap] = useState('jet');
-  const [sigplotColormap, setSigplotColormap] = useState(1);
   const [fftColor, setFftColor] = useState('#00ff00');
-  
+  const [isColorModalOpen, setIsColorModalOpen] = useState(false);
   const [zmin, setZmin] = useState(-80);
   const [zmax, setZmax] = useState(-20);
   const [gainBounds, setGainBounds] = useState([-150, 0]);
@@ -701,9 +700,136 @@ function App() {
             <option value="vertical">Stacking: Vertical</option>
           </select>
           <a href="/docs" target="_blank" rel="noreferrer" style={{color: 'var(--text-color)', fontSize: '0.9rem', opacity: 0.7, textDecoration: 'none'}}>API (Swagger)</a>
+          <button onClick={() => setIsColorModalOpen(true)} style={{width: 'auto', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}} title="Color & Styling Options">
+            <div style={{width: '18px', height: '18px', borderRadius: '50%', background: 'conic-gradient(#ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)', border: '1px solid var(--border-color)'}}></div>
+          </button>
           <button onClick={toggleTheme} style={{width: 'auto', margin: 0}}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
         </div>
       </div>
+      
+      {isColorModalOpen && (
+        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', zIndex: 9999}}>
+          <div style={{background: 'var(--panel-bg)', padding: '20px', borderRadius: '8px', minWidth: '350px', border: '1px solid var(--border-color)', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'}}>
+            <h3 style={{marginTop: 0, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px'}}>Color & Styling Options</h3>
+            
+            <div style={{marginBottom: '15px'}}>
+              <label style={{display: 'block', marginBottom: '5px'}}>Solid Color (Lines / Constellation)</label>
+              <ColormapSelect
+                value={fftColor}
+                onChange={setFftColor}
+                options={[
+                  {value: '#000000', label: 'Black'},
+                  {value: '#0000ff', label: 'Blue'},
+                  {value: '#8b4513', label: 'Brown'},
+                  {value: '#ff7f50', label: 'Coral'},
+                  {value: '#00ffff', label: 'Cyan'},
+                  {value: '#888888', label: 'Gray'},
+                  {value: '#00ff00', label: 'Green'},
+                  {value: '#4b0082', label: 'Indigo'},
+                  {value: '#ccff00', label: 'Lime'},
+                  {value: '#ff00ff', label: 'Magenta'},
+                  {value: '#800000', label: 'Maroon'},
+                  {value: '#000080', label: 'Navy'},
+                  {value: '#808000', label: 'Olive'},
+                  {value: '#ffaa00', label: 'Orange'},
+                  {value: '#ff66b2', label: 'Pink'},
+                  {value: '#a32cc4', label: 'Purple'},
+                  {value: '#ff0000', label: 'Red'},
+                  {value: '#c0c0c0', label: 'Silver'},
+                  {value: '#00ffcc', label: 'Teal'},
+                  {value: '#ffffff', label: 'White'},
+                  {value: '#ffff00', label: 'Yellow'}
+                ]}
+                gradients={{
+                  '#000000': '#000000',
+                  '#0000ff': '#0000ff',
+                  '#8b4513': '#8b4513',
+                  '#ff7f50': '#ff7f50',
+                  '#00ffff': '#00ffff',
+                  '#888888': '#888888',
+                  '#00ff00': '#00ff00',
+                  '#4b0082': '#4b0082',
+                  '#ccff00': '#ccff00',
+                  '#ff00ff': '#ff00ff',
+                  '#800000': '#800000',
+                  '#000080': '#000080',
+                  '#808000': '#808000',
+                  '#ffaa00': '#ffaa00',
+                  '#ff66b2': '#ff66b2',
+                  '#a32cc4': '#a32cc4',
+                  '#ff0000': '#ff0000',
+                  '#c0c0c0': '#c0c0c0',
+                  '#00ffcc': '#00ffcc',
+                  '#ffffff': '#ffffff',
+                  '#ffff00': '#ffff00'
+                }}
+              />
+            </div>
+
+            <div style={{marginBottom: '15px'}}>
+              <label style={{display: 'block', marginBottom: '5px'}}>Color Map (Waterfalls / 2D)</label>
+              <ColormapSelect
+                value={colormap}
+                onChange={setColormap}
+                options={[
+                  {value: 'bugn', label: 'BuGn'},
+                  {value: 'calewhite', label: 'Calewhite'},
+                  {value: 'cold', label: 'Cold'},
+                  {value: 'electric', label: 'Electric'},
+                  {value: 'frog', label: 'Frog'},
+                  {value: 'gqrx', label: 'GQRX'},
+                  {value: 'grape', label: 'Grape'},
+                  {value: 'greynred', label: 'GreyNRed'},
+                  {value: 'greyscale', label: 'Greyscale'},
+                  {value: 'hot', label: 'Hot'},
+                  {value: 'jet', label: 'Jet'},
+                  {value: 'pablo', label: 'Pablo'},
+                  {value: 'sunset', label: 'Sunset'},
+                  {value: 'turbo', label: 'Turbo'},
+                  {value: 'websdr', label: 'WebSDR'},
+                  {value: 'ylgnbu', label: 'YlGnBu'},
+                  {value: 'ylorbr', label: 'YlOrBr'},
+                  {value: 'ylorrd', label: 'YlOrRd'}
+                ]}
+                gradients={{
+                  bugn: 'linear-gradient(to right, #e5f5f9, #99d8c9, #2ca25f)',
+                  calewhite: 'linear-gradient(to right, #ffffff, #000000)',
+                  cold: 'linear-gradient(to right, #000000, #0000ff, #00ffff, #ffffff)',
+                  electric: 'linear-gradient(to right, #000000, #000064, #0000ff, #00ffff, #ffff00, #ffffff)',
+                  frog: 'linear-gradient(to right, #000000, #005000, #00b400, #00ff00, #ffff00, #ff0000, #ffffff)',
+                  gqrx: 'linear-gradient(to right, #000000, #000096, #0096ff, #ffff00, #ff0000, #ffffff)',
+                  grape: 'linear-gradient(to right, #000000, #3c0078, #9600c8, #dc00ff, #ff64ff, #b4ff00, #ffffff)',
+                  greynred: 'linear-gradient(to right, #000000, #888888, #ff0000)',
+                  greyscale: 'linear-gradient(to right, #000000, #ffffff)',
+                  hot: 'linear-gradient(to right, #000000, #ff0000, #ffff00, #ffffff)',
+                  jet: 'linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000)',
+                  pablo: 'linear-gradient(to right, #000000, #0000ff, #00ff00, #ffff00, #ff0000, #ffffff)',
+                  sunset: 'linear-gradient(to right, #000000, #4400aa, #dd3344, #ffaa00, #ffffff)',
+                  turbo: 'linear-gradient(to right, #30123b, #4288eb, #28fb95, #a4fc3c, #f39913, #d12907, #7a0403)',
+                  websdr: 'linear-gradient(to right, #000000, #500096, #ff0000, #ffff00, #ffffff)',
+                  ylgnbu: 'linear-gradient(to right, #edf8b1, #7fcdbb, #2c7fb8)',
+                  ylorbr: 'linear-gradient(to right, #fff7bc, #fec44f, #d95f0e)',
+                  ylorrd: 'linear-gradient(to right, #ffeda0, #feb24c, #f03b20)'
+                }}
+              />
+            </div>
+
+            <div style={{marginBottom: '20px'}}>
+              <label style={{display: 'block', marginBottom: '5px'}}>Static Plot Fill Mode</label>
+              <select value={fillMode} onChange={(e) => setFillMode(e.target.value)} style={{width: '100%'}}>
+                <option value="gradient">Gradient (Color Map)</option>
+                <option value="solid">Solid (Solid Color)</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+
+            <div style={{display: 'flex', justifyContent: 'flex-end'}}>
+              <button onClick={() => setIsColorModalOpen(false)} style={{background: 'var(--accent-color)', color: '#000', padding: '8px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="content">
         
         <div className="panel" style={{flex: 1, overflowY: 'auto'}}>
@@ -835,58 +961,7 @@ function App() {
             </div>
           </div>
           
-          <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Interactive Plot Options</h3>
-          
-          <div className="form-group" style={{display: 'flex', gap: '10px'}}>
-            <div style={{flex: 1}}>
-              <label>Spectrum Color</label>
-              <select value={fftColor} onChange={(e) => setFftColor(e.target.value)}>
-                <option value="#00ff00">Green</option>
-                <option value="#00ffff">Cyan</option>
-                <option value="#ffff00">Yellow</option>
-                <option value="#ff00ff">Magenta</option>
-                <option value="#ffffff">White</option>
-                <option value="#ff0000">Red</option>
-              </select>
-            </div>
-            <div style={{flex: 1}}>
-              <label>Color Map</label>
-              <ColormapSelect 
-                value={sigplotColormap} 
-                onChange={(v) => setSigplotColormap(Number(v))}
-                options={[
-                  {value: 10, label: 'BuGn'},
-                  {value: 4, label: 'calewhite'},
-                  {value: 8, label: 'Cold'},
-                  {value: 2, label: 'Color Wheel'},
-                  {value: 0, label: 'Greyscale'},
-                  {value: 14, label: 'GreyNRed'},
-                  {value: 7, label: 'Hot'},
-                  {value: 1, label: 'Ramp Colormap'},
-                  {value: 3, label: 'Spectrum'},
-                  {value: 6, label: 'Sunset'},
-                  {value: 12, label: 'YlGnBu'},
-                  {value: 11, label: 'YlOrBr'},
-                  {value: 13, label: 'YlOrRd'}
-                ]}
-                gradients={{
-                  0: 'linear-gradient(to right, #000000, #ffffff)',
-                  1: 'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000, #800000)',
-                  2: 'linear-gradient(to right, #000, #fff)',
-                  3: 'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000, #800000)',
-                  4: 'linear-gradient(to right, #ffffff, #000000)',
-                  6: 'linear-gradient(to right, #000000, #4400aa, #dd3344, #ffaa00, #ffffff)',
-                  7: 'linear-gradient(to right, #000000, #ff0000, #ffff00, #ffffff)',
-                  8: 'linear-gradient(to right, #000000, #0000ff, #00ffff, #ffffff)',
-                  10: 'linear-gradient(to right, #e5f5f9, #99d8c9, #2ca25f)',
-                  11: 'linear-gradient(to right, #fff7bc, #fec44f, #d95f0e)',
-                  12: 'linear-gradient(to right, #edf8b1, #7fcdbb, #2c7fb8)',
-                  13: 'linear-gradient(to right, #ffeda0, #feb24c, #f03b20)',
-                  14: 'linear-gradient(to right, #000000, #888888, #ff0000)'
-                }}
-              />
-            </div>
-          </div>
+          <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Interactive Plots</h3>
           
           <div style={{display: 'flex', gap: '5px'}}>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum</button>
@@ -897,60 +972,7 @@ function App() {
           
           {loading && <p style={{color: 'var(--accent-color)', fontWeight: 'bold', margin: '5px 0'}}>Processing...</p>}
 
-          <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Static Plot Options</h3>
-          <div className="form-group" style={{display: 'flex', gap: '10px'}}>
-            <div style={{flex: 1}}>
-              <label>Fill Mode</label>
-              <select value={fillMode} onChange={(e) => setFillMode(e.target.value)}>
-                <option value="gradient">Gradient</option>
-                <option value="solid">Solid</option>
-                <option value="none">None</option>
-              </select>
-              {fillMode !== 'gradient' ? (
-                <div style={{marginTop: '5px'}}>
-                  <input type="color" value={fftColor} onChange={(e) => setFftColor(e.target.value)} style={{width: '100%', height: '25px', border: 'none', padding: '0', background: 'transparent', cursor: 'pointer'}} />
-                </div>
-              ) : (
-                <div style={{marginTop: '5px', height: '25px', borderRadius: '3px', background: 
-                  colormap === 'jet' ? 'linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000)' :
-                  colormap === 'electric' ? 'linear-gradient(to right, #000000, #000064, #0000ff, #00ffff, #ffff00, #ffffff)' :
-                  colormap === 'turbo' ? 'linear-gradient(to right, #30123b, #4288eb, #28fb95, #a4fc3c, #f39913, #d12907, #7a0403)' :
-                  colormap === 'pablo' ? 'linear-gradient(to right, #000000, #0000ff, #00ff00, #ffff00, #ff0000, #ffffff)' :
-                  colormap === 'frog' ? 'linear-gradient(to right, #000000, #005000, #00b400, #00ff00, #ffff00, #ff0000, #ffffff)' :
-                  colormap === 'grape' ? 'linear-gradient(to right, #000000, #3c0078, #9600c8, #dc00ff, #ff64ff, #b4ff00, #ffffff)' :
-                  colormap === 'gqrx' ? 'linear-gradient(to right, #000000, #000096, #0096ff, #ffff00, #ff0000, #ffffff)' :
-                  colormap === 'websdr' ? 'linear-gradient(to right, #000000, #500096, #ff0000, #ffff00, #ffffff)' : '#888'
-                }}></div>
-              )}
-            </div>
-            <div style={{flex: 1}}>
-              <label>Color Map</label>
-              <ColormapSelect
-                value={colormap}
-                onChange={setColormap}
-                options={[
-                  {value: 'electric', label: 'Electric'},
-                  {value: 'frog', label: 'Frog'},
-                  {value: 'gqrx', label: 'GQRX'},
-                  {value: 'grape', label: 'Grape'},
-                  {value: 'jet', label: 'Jet'},
-                  {value: 'pablo', label: 'Pablo'},
-                  {value: 'turbo', label: 'Turbo'},
-                  {value: 'websdr', label: 'WebSDR'}
-                ]}
-                gradients={{
-                  electric: 'linear-gradient(to right, #000000, #000064, #0000ff, #00ffff, #ffff00, #ffffff)',
-                  frog: 'linear-gradient(to right, #000000, #005000, #00b400, #00ff00, #ffff00, #ff0000, #ffffff)',
-                  gqrx: 'linear-gradient(to right, #000000, #000096, #0096ff, #ffff00, #ff0000, #ffffff)',
-                  grape: 'linear-gradient(to right, #000000, #3c0078, #9600c8, #dc00ff, #ff64ff, #b4ff00, #ffffff)',
-                  jet: 'linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000)',
-                  pablo: 'linear-gradient(to right, #000000, #0000ff, #00ff00, #ffff00, #ff0000, #ffffff)',
-                  turbo: 'linear-gradient(to right, #30123b, #4288eb, #28fb95, #a4fc3c, #f39913, #d12907, #7a0403)',
-                  websdr: 'linear-gradient(to right, #000000, #500096, #ff0000, #ffff00, #ffffff)'
-                }}
-              />
-            </div>
-          </div>
+          <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Static Plots</h3>
 
           <div style={{display: 'flex', gap: '5px', marginTop: '5px'}}>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum</button>
@@ -998,7 +1020,7 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                            <SigPlot dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />                      ) : (
+                            <SigPlot dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} colormap={colormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />                      ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
                         </div>

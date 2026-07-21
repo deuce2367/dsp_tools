@@ -191,6 +191,81 @@ public:
         }
         return colors[num_stops - 1];
     }
+    static RGB get_greyscale(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        unsigned char v = static_cast<unsigned char>(value * 255.0f);
+        return {v, v, v};
+    }
+
+    static RGB get_sunset(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        const int num_stops = 5;
+        float stops[num_stops] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+        RGB colors[num_stops] = {
+            {0, 0, 0},        // Black
+            {68, 0, 170},     // Dark Purple
+            {221, 51, 68},    // Red
+            {255, 170, 0},    // Orange
+            {255, 255, 255}   // White
+        };
+        for (int i = 0; i < num_stops - 1; ++i) {
+            if (value >= stops[i] && value <= stops[i+1]) {
+                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
+                RGB c;
+                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
+                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
+                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
+                return c;
+            }
+        }
+        return colors[num_stops - 1];
+    }
+
+    static RGB get_hot(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        const int num_stops = 4;
+        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        RGB colors[num_stops] = {
+            {0, 0, 0},        // Black
+            {255, 0, 0},      // Red
+            {255, 255, 0},    // Yellow
+            {255, 255, 255}   // White
+        };
+        for (int i = 0; i < num_stops - 1; ++i) {
+            if (value >= stops[i] && value <= stops[i+1]) {
+                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
+                RGB c;
+                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
+                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
+                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
+                return c;
+            }
+        }
+        return colors[num_stops - 1];
+    }
+
+    static RGB get_cold(float value) {
+        value = std::max(0.0f, std::min(1.0f, value));
+        const int num_stops = 4;
+        float stops[num_stops] = {0.0f, 0.333f, 0.666f, 1.0f};
+        RGB colors[num_stops] = {
+            {0, 0, 0},        // Black
+            {0, 0, 255},      // Blue
+            {0, 255, 255},    // Cyan
+            {255, 255, 255}   // White
+        };
+        for (int i = 0; i < num_stops - 1; ++i) {
+            if (value >= stops[i] && value <= stops[i+1]) {
+                float t = (value - stops[i]) / (stops[i+1] - stops[i]);
+                RGB c;
+                c.r = static_cast<unsigned char>(colors[i].r + t * (colors[i+1].r - colors[i].r));
+                c.g = static_cast<unsigned char>(colors[i].g + t * (colors[i+1].g - colors[i].g));
+                c.b = static_cast<unsigned char>(colors[i].b + t * (colors[i+1].b - colors[i].b));
+                return c;
+            }
+        }
+        return colors[num_stops - 1];
+    }
     
     static RGB get_jet(float value) {
         value = std::max(0.0f, std::min(1.0f, value));

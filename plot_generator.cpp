@@ -401,6 +401,10 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 else if (colormap == "frog") c = Colormap::get_frog(norm_val);
                 else if (colormap == "grape") c = Colormap::get_grape(norm_val);
                 else if (colormap == "jet") c = Colormap::get_jet(norm_val);
+                else if (colormap == "greyscale") c = Colormap::get_greyscale(norm_val);
+                else if (colormap == "sunset") c = Colormap::get_sunset(norm_val);
+                else if (colormap == "hot") c = Colormap::get_hot(norm_val);
+                else if (colormap == "cold") c = Colormap::get_cold(norm_val);
                 else c = Colormap::get_turbo(norm_val);
                 draw_line(pixels, full_width, full_height, leg_x, leg_y + y, leg_x + leg_w, leg_y + y, c);
             }
@@ -500,6 +504,10 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                 else if (colormap == "frog") color = Colormap::get_frog(norm_val);
                 else if (colormap == "grape") color = Colormap::get_grape(norm_val);
                 else if (colormap == "jet") color = Colormap::get_jet(norm_val);
+                else if (colormap == "greyscale") color = Colormap::get_greyscale(norm_val);
+                else if (colormap == "sunset") color = Colormap::get_sunset(norm_val);
+                else if (colormap == "hot") color = Colormap::get_hot(norm_val);
+                else if (colormap == "cold") color = Colormap::get_cold(norm_val);
                 else color = Colormap::get_turbo(norm_val);
             }
             set_pixel(pixels, out_width, out_height, plot_x + x, plot_y + y, color);
@@ -698,6 +706,10 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
                 else if (colormap == "frog") color = Colormap::get_frog(norm_val);
                 else if (colormap == "grape") color = Colormap::get_grape(norm_val);
                 else if (colormap == "jet") color = Colormap::get_jet(norm_val);
+                else if (colormap == "greyscale") color = Colormap::get_greyscale(norm_val);
+                else if (colormap == "sunset") color = Colormap::get_sunset(norm_val);
+                else if (colormap == "hot") color = Colormap::get_hot(norm_val);
+                else if (colormap == "cold") color = Colormap::get_cold(norm_val);
                 else color = Colormap::get_turbo(norm_val);
             }
             set_pixel(pixels, out_width, out_height, plot_x + x, plot_y + y, color);

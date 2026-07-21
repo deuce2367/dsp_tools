@@ -1,12 +1,18 @@
 import React, { useEffect, useRef } from 'react';
 import { Plot } from 'sigplot';
 
-const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff00', sigplotColormap = 1, onDataLoaded, onZoom }) => {
+const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff00', colormap = 'jet', onDataLoaded, onZoom }) => {
   const plotRef = useRef(null);
   const sigplotInstance = useRef(null);
 
   useEffect(() => {
     if (!plotRef.current) return;
+
+    const SIGPLOT_CMAP_MAPPING = {
+      jet: 1, greyscale: 0, sunset: 6, hot: 7, cold: 8,
+      electric: 8, frog: 1, gqrx: 8, grape: 6, pablo: 1, turbo: 1, websdr: 7
+    };
+    const cmapInt = SIGPLOT_CMAP_MAPPING[colormap] !== undefined ? SIGPLOT_CMAP_MAPPING[colormap] : 1;
 
     if (!sigplotInstance.current) {
       sigplotInstance.current = new Plot(plotRef.current, {
@@ -14,7 +20,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
         autolink: false,
         nopan: true,
         hide_panning: true,
-        cmap: sigplotColormap,
+        cmap: cmapInt,
         colors: {
           bg: theme === 'dark' ? '#000000' : '#ffffff',
           fg: theme === 'dark' ? '#ffffff' : '#000000'
@@ -32,7 +38,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       } else if (type === 'constellation') {
           layerOptions = { color: fftColor, line: 0, symbol: 1, radius: 2 };
       } else {
-          layerOptions = { cmap: sigplotColormap };
+          layerOptions = { cmap: cmapInt };
       }
 
       console.log("Loading sigplot from:", dataUrl, "type:", type);
@@ -112,9 +118,14 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
 
   useEffect(() => {
     if (sigplotInstance.current) {
-      sigplotInstance.current.change_settings({ cmap: sigplotColormap });
+      const SIGPLOT_CMAP_MAPPING = {
+        jet: 1, greyscale: 0, sunset: 6, hot: 7, cold: 8,
+        electric: 8, frog: 1, gqrx: 8, grape: 6, pablo: 1, turbo: 1, websdr: 7
+      };
+      const cmapInt = SIGPLOT_CMAP_MAPPING[colormap] !== undefined ? SIGPLOT_CMAP_MAPPING[colormap] : 1;
+      sigplotInstance.current.change_settings({ cmap: cmapInt });
     }
-  }, [sigplotColormap]);
+  }, [colormap]);
 
   useEffect(() => {
     if (sigplotInstance.current && (type === '1D' || type === 'time_domain' || type === 'constellation')) {
