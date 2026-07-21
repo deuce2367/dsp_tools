@@ -68,9 +68,15 @@ class PSDRequest(BaseModel):
 
 class TimeDomainRequest(BaseModel):
     input_file: str
-    start_time: float = 0.0
-    duration: float = 0.0
+    start_time: float = 0
+    duration: float = 0
     target_points: int = 10000
+
+class ConstellationRequest(BaseModel):
+    input_file: str
+    start_time: float = 0
+    duration: float = 0
+    max_points: int = 100000
 
 class PlotRequest(BaseModel):
     input_file: str
@@ -85,6 +91,7 @@ class PlotRequest(BaseModel):
     plot_fft: bool = True
     plot_waterfall: bool = True
     plot_time_domain: bool = False
+    plot_constellation: bool = False
     width: int = 1024
     height: int = 512
     theme: str = "dark"
@@ -287,6 +294,26 @@ async def run_time_domain(req: TimeDomainRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/run/constellation")
+async def run_constellation(req: ConstellationRequest):
+    """
+    Generate an interactive Constellation (Raw IQ Scatter) plot data buffer.
+    """
+    try:
+        input_path = os.path.join(DATA_DIR, req.input_file)
+        if not os.path.exists(input_path):
+            raise HTTPException(status_code=404, detail="Input file not found")
+            
+        out_id = f"const_{uuid.uuid4().hex[:8]}.prm"
+        data = await asyncio.to_thread(
+            dsp_wrapper.run_constellation_data, 
+            input_path, req.start_time, req.duration, req.max_points
+        )
+        add_to_cache(out_id, data)
+        return {"status": "success", "output_file": out_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/run/plot")
 async def run_plot(req: PlotRequest):
     """
@@ -317,6 +344,7 @@ async def run_plot(req: PlotRequest):
             req.plot_fft,
             req.plot_waterfall, 
             req.plot_time_domain,
+            req.plot_constellation,
             req.colormap,
             req.width,
             req.height,

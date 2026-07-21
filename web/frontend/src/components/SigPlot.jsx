@@ -26,24 +26,43 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       // Clear previous layers
       sigplotInstance.current.deoverlay();
       
-      let layerOptions = type === '1D' ? { color: fftColor } : { cmap: sigplotColormap };
+      let layerOptions = {};
+      if (type === '1D' || type === 'time_domain') {
+          layerOptions = { color: fftColor };
+      } else if (type === 'constellation') {
+          layerOptions = { color: fftColor, line: 0, symbol: 1, radius: 2 };
+      } else {
+          layerOptions = { cmap: sigplotColormap };
+      }
+
       console.log("Loading sigplot from:", dataUrl, "type:", type);
       try {
         sigplotInstance.current.overlay_href(dataUrl, (layer) => {
           console.log("Sigplot layer loaded successfully:", layer);
+
           if (zmin !== '' && zmin !== undefined && zmax !== '' && zmax !== undefined) {
              let opts = { cmap: sigplotColormap };
              if (type === '1D') {
                  opts.ymin = parseFloat(zmin);
                  opts.ymax = parseFloat(zmax);
+             } else if (type === 'constellation') {
+                 opts.cmode = 5;
+                 opts.ymin = parseFloat(zmin);
+                 opts.ymax = parseFloat(zmax);
+                 opts.xmin = parseFloat(zmin);
+                 opts.xmax = parseFloat(zmax);
              } else {
                  opts.zmin = parseFloat(zmin);
                  opts.zmax = parseFloat(zmax);
              }
              sigplotInstance.current.change_settings(opts);
           } else if (onDataLoaded && layer) {
+             if (type === 'constellation') {
+                 sigplotInstance.current.change_settings({ cmode: 5 });
+             }
+             
              // Auto-scaled! Tell parent what bounds were chosen
-             if (type === '1D' && layer.ymin !== undefined && layer.ymax !== undefined) {
+             if ((type === '1D' || type === 'time_domain') && layer.ymin !== undefined && layer.ymax !== undefined) {
                  let newYmin = layer.ymin - 5.0;
                  let newYmax = layer.ymax + 5.0;
                  sigplotInstance.current.change_settings({ymin: newYmin, ymax: newYmax});
@@ -98,7 +117,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
   }, [sigplotColormap]);
 
   useEffect(() => {
-    if (sigplotInstance.current && type === '1D') {
+    if (sigplotInstance.current && (type === '1D' || type === 'time_domain' || type === 'constellation')) {
         try {
             const plot = sigplotInstance.current;
             const Gx = plot._Gx || plot._plot1d;

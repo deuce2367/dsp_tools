@@ -4,10 +4,13 @@ This document contains a list of future visualization ideas and enhancements to 
 
 ## Additional DSP Views to Implement
 
-- [ ] **Constellation (Scatter) Plot**
+- [x] **Constellation (Scatter) Plot**
   - **Description:** Plots the I channel on the X-axis against the Q channel on the Y-axis as a scatter plot.
   - **Use Case:** Absolutely mandatory for analyzing digital communications (e.g., QPSK, QAM). Allows visualization of the modulation scheme, phase noise, and symbol clusters.
-  - **Implementation Note:** SigPlot natively supports 2D scatter/constellation plots for complex data.
+  - **Implementation Note:** Implemented in Web UI using SigPlot's cmode 5 (scatter).
+
+- [ ] **Interactive Time Domain Zoom/Pan**
+  - **Description:** Currently the time domain envelope is static/fixed bounds based on the initial file load. We should hook up the SigPlot zoom events to re-trigger the C++ backend and regenerate the Min/Max envelope dynamically for the new zoomed time bounds to provide higher fidelity at deeper zoom levels.
 
 - [ ] **Phase vs. Time / Frequency vs. Time**
   - **Description:** Instead of plotting Amplitude vs. Time, plot the instantaneous Phase angle (`atan2(Q, I)`) or its derivative (Frequency) over time.

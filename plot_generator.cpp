@@ -966,3 +966,112 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
     }
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
+
+void PlotGenerator::generate_constellation_plot_mem(const std::vector<float>& iq_data,
+                                   std::vector<uint8_t>& out_buffer,
+                                   int out_width, int out_height,
+                                   double min_val, double max_val,
+                                   bool draw_grid, bool draw_labels,
+                                   const std::string& out_format,
+                                   int num_x_ticks, int num_y_ticks,
+                                   const std::string& title,
+                                   int jpeg_quality, int png_compression,
+                                   const std::string& font_path,
+                                   const std::string& theme,
+                                   const std::string& color_hex) {
+    auto parse_hex_color = [](const std::string& hex) -> RGB {
+        if (hex.size() == 7 && hex[0] == '#') {
+            return {
+                static_cast<uint8_t>(std::stoi(hex.substr(1, 2), nullptr, 16)),
+                static_cast<uint8_t>(std::stoi(hex.substr(3, 2), nullptr, 16)),
+                static_cast<uint8_t>(std::stoi(hex.substr(5, 2), nullptr, 16))
+            };
+        }
+        return {0, 255, 0};
+    };
+
+    RGB bg_color = (theme == "dark") ? RGB{0, 0, 0} : RGB{255, 255, 255};
+    RGB axis_color = (theme == "dark") ? RGB{255, 255, 255} : RGB{50, 50, 50};
+    RGB pt_color = parse_hex_color(color_hex);
+
+    std::vector<uint8_t> pixels(out_width * out_height * 3, 0);
+    for (size_t i = 0; i < pixels.size(); i += 3) {
+        pixels[i] = bg_color.r; pixels[i+1] = bg_color.g; pixels[i+2] = bg_color.b;
+    }
+
+    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
+    int margin_left = 60 * text_scale;
+    int margin_bottom = 40 * text_scale;
+    int margin_top = 30 * text_scale;
+    int margin_right = 30 * text_scale;
+
+    if (!draw_labels) { margin_left = 10; margin_bottom = 10; margin_top = 10; margin_right = 10; }
+    
+    int plot_x = margin_left;
+    int plot_y = margin_top;
+    int plot_w = out_width - margin_left - margin_right;
+    int plot_h = out_height - margin_top - margin_bottom;
+
+    if (draw_grid) {
+        // Draw center crosshairs if 0 is in range
+        if (min_val <= 0.0 && max_val >= 0.0) {
+            double range = max_val - min_val;
+            if (range < 1e-6) range = 1e-6;
+            int zero_x = plot_x + static_cast<int>(((0.0 - min_val) / range) * plot_w);
+            int zero_y = plot_y + plot_h - 1 - static_cast<int>(((0.0 - min_val) / range) * plot_h);
+            draw_line(pixels, out_width, out_height, zero_x, plot_y, zero_x, plot_y + plot_h, axis_color);
+            draw_line(pixels, out_width, out_height, plot_x, zero_y, plot_x + plot_w, zero_y, axis_color);
+        }
+    }
+    // Draw outer box
+    draw_line(pixels, out_width, out_height, plot_x, plot_y, plot_x + plot_w, plot_y, axis_color);
+    draw_line(pixels, out_width, out_height, plot_x, plot_y + plot_h, plot_x + plot_w, plot_y + plot_h, axis_color);
+    draw_line(pixels, out_width, out_height, plot_x, plot_y, plot_x, plot_y + plot_h, axis_color);
+    draw_line(pixels, out_width, out_height, plot_x + plot_w, plot_y, plot_x + plot_w, plot_y + plot_h, axis_color);
+
+    if (draw_labels) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.2f", min_val);
+        draw_text(pixels, out_width, out_height, plot_x, plot_y + plot_h + 5, buf, axis_color, text_scale, font_path);
+        std::snprintf(buf, sizeof(buf), "%.2f", max_val);
+        draw_text(pixels, out_width, out_height, plot_x + plot_w - get_text_width(buf, text_scale, font_path), plot_y + plot_h + 5, buf, axis_color, text_scale, font_path);
+        
+        std::snprintf(buf, sizeof(buf), "%.2f", max_val);
+        draw_text(pixels, out_width, out_height, 2, plot_y, buf, axis_color, text_scale, font_path);
+        std::snprintf(buf, sizeof(buf), "%.2f", min_val);
+        draw_text(pixels, out_width, out_height, 2, plot_y + plot_h - 15, buf, axis_color, text_scale, font_path);
+    }
+
+    // Draw Title
+    if (draw_labels && !title.empty()) {
+        int title_scale = std::max(1, text_scale);
+        int title_w = get_text_width(title, title_scale, font_path);
+        draw_text(pixels, out_width, out_height, out_width / 2 - title_w / 2, 5 * text_scale, title, axis_color, title_scale, font_path);
+    }
+
+    size_t num_pts = iq_data.size() / 2;
+    double range = max_val - min_val;
+    if (range < 1e-6) range = 1e-6;
+
+    for (size_t i = 0; i < num_pts; ++i) {
+        double real_val = iq_data[i * 2];
+        double imag_val = iq_data[i * 2 + 1];
+
+        if (real_val < min_val || real_val > max_val || imag_val < min_val || imag_val > max_val) continue;
+
+        int x = static_cast<int>(((real_val - min_val) / range) * plot_w);
+        int y = plot_h - 1 - static_cast<int>(((imag_val - min_val) / range) * plot_h);
+
+        int px = plot_x + x;
+        int py = plot_y + y;
+
+        if (px >= plot_x && px < plot_x + plot_w && py >= plot_y && py < plot_y + plot_h) {
+            set_pixel(pixels, out_width, out_height, px, py, pt_color);
+            set_pixel(pixels, out_width, out_height, px+1, py, pt_color);
+            set_pixel(pixels, out_width, out_height, px, py+1, pt_color);
+            set_pixel(pixels, out_width, out_height, px+1, py+1, pt_color);
+        }
+    }
+
+    save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
+}

@@ -132,6 +132,22 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         return py::bytes(buffer);
     }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::call_guard<py::gil_scoped_release>());
     
+    m.def("run_constellation_data", [](const std::string& input_file, double start_time, double duration, size_t max_points) {
+        std::vector<uint8_t> raw_buffer = DspTimeDomain::extract_raw_iq(input_file, start_time, duration, max_points);
+        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
+        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        hdr.type = 1000; hdr.format[0] = 'C'; hdr.format[1] = 'F'; 
+        hdr.timecode = start_time; hdr.data_start = 512.0; hdr.data_size = raw_buffer.size();
+        hdr.xstart = 0.0; hdr.xdelta = 1.0; hdr.xunits = 1;
+        
+        std::string buffer;
+        buffer.reserve(sizeof(BlueHeader) + raw_buffer.size());
+        buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
+        buffer.append(reinterpret_cast<const char*>(raw_buffer.data()), raw_buffer.size());
+        
+        return py::bytes(buffer);
+    }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("max_points"), py::call_guard<py::gil_scoped_release>());
+    
     m.def("run_fft_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing) {
@@ -211,7 +227,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
                                  double center_freq, double zoom_center, double zoom_bw, 
                                  double start_time, double duration, size_t window_size, int smoothing,
-                                 bool plot_fft, bool plot_waterfall, bool plot_time_domain, const std::string& colormap, int width, int height,
+                                 bool plot_fft, bool plot_waterfall, bool plot_time_domain, bool plot_constellation, const std::string& colormap, int width, int height,
                                  const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex,
                                  double zmin, double zmax) {
         DspEngine engine(width);
@@ -301,10 +317,29 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             size_t actual_buckets = actual_floats / floats_per_bucket;
             
             PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, fill_color_hex, "#0088FF");
+        } else if (plot_constellation) {
+            size_t max_points = 100000;
+            std::vector<uint8_t> raw_buf = DspTimeDomain::extract_raw_iq(input_file, start_time, duration, max_points);
+            if (!raw_buf.empty()) {
+                size_t num_floats = raw_buf.size() / sizeof(float);
+                std::vector<float> iq_data(num_floats);
+                std::memcpy(iq_data.data(), raw_buf.data(), raw_buf.size());
+                
+                double actual_max_val = -1000000.0;
+                double actual_min_val = 1000000.0;
+                for (size_t i = 0; i < num_floats; ++i) {
+                    if (iq_data[i] > actual_max_val) actual_max_val = iq_data[i];
+                    if (iq_data[i] < actual_min_val) actual_min_val = iq_data[i];
+                }
+                double final_min_val = (zmin > -999.0) ? zmin : actual_min_val;
+                double final_max_val = (zmax < 999.0) ? zmax : actual_max_val;
+                
+                PlotGenerator::generate_constellation_plot_mem(iq_data, out_buffer, width, height, final_min_val, final_max_val, true, true, out_format, 10, 10, "", 90, 8, "", theme, fill_color_hex);
+            }
         }
 
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
 }

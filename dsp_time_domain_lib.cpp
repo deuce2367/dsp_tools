@@ -150,3 +150,91 @@ std::vector<uint8_t> DspTimeDomain::generate_time_domain_envelope(
         throw std::runtime_error("Unsupported data format type: " + std::string(1, data_type));
     }
 }
+std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
+    const std::string& input_file,
+    double start_time,
+    double duration,
+    size_t max_points
+) {
+    BlueHeader hdr = read_bluefile_header(input_file);
+    MmapHandle mmap_in(input_file);
+    
+    size_t data_offset = static_cast<size_t>(hdr.data_start);
+    size_t file_size = mmap_in.size;
+    size_t data_size = file_size > data_offset ? file_size - data_offset : 0;
+    
+    bool is_complex = (hdr.format[0] == 'C');
+    if (!is_complex) {
+        throw std::runtime_error("extract_raw_iq requires complex input data.");
+    }
+    
+    size_t bytes_per_sample = is_complex ? 8 : 4; // assuming floats
+    if (hdr.format[1] == 'D') bytes_per_sample = is_complex ? 16 : 8;
+    else if (hdr.format[1] == 'B') bytes_per_sample = is_complex ? 2 : 1;
+    else if (hdr.format[1] == 'I') bytes_per_sample = is_complex ? 4 : 2;
+    else if (hdr.format[1] == 'L') bytes_per_sample = is_complex ? 8 : 4;
+    
+    size_t total_samples = data_size / bytes_per_sample;
+    
+    double xdelta = hdr.xdelta > 0 ? hdr.xdelta : 1.0;
+    
+    size_t start_idx = static_cast<size_t>(start_time / xdelta);
+    if (start_idx > total_samples) start_idx = total_samples;
+    
+    size_t end_idx = total_samples;
+    if (duration > 0.0) {
+        size_t dur_idx = static_cast<size_t>(duration / xdelta);
+        end_idx = start_idx + dur_idx;
+        if (end_idx > total_samples) end_idx = total_samples;
+    }
+    
+    size_t samples_to_read = end_idx - start_idx;
+    if (samples_to_read == 0) {
+        return std::vector<uint8_t>();
+    }
+    
+    // Decimation factor to limit points
+    size_t step = 1;
+    if (samples_to_read > max_points) {
+        step = samples_to_read / max_points;
+        samples_to_read = max_points;
+    }
+    
+    std::vector<uint8_t> out_buffer;
+    out_buffer.resize(samples_to_read * 8); // 8 bytes per complex point (2 floats)
+    float* out_ptr = reinterpret_cast<float*>(out_buffer.data());
+    
+    const uint8_t* in_data = mmap_in.ptr + data_offset;
+    
+    for (size_t i = 0; i < samples_to_read; ++i) {
+        size_t src_idx = start_idx + i * step;
+        float i_val = 0.0f, q_val = 0.0f;
+        
+        if (hdr.format[1] == 'F') {
+            const float* src = reinterpret_cast<const float*>(in_data + src_idx * 8);
+            i_val = src[0];
+            q_val = src[1];
+        } else if (hdr.format[1] == 'D') {
+            const double* src = reinterpret_cast<const double*>(in_data + src_idx * 16);
+            i_val = static_cast<float>(src[0]);
+            q_val = static_cast<float>(src[1]);
+        } else if (hdr.format[1] == 'I') {
+            const int16_t* src = reinterpret_cast<const int16_t*>(in_data + src_idx * 4);
+            i_val = static_cast<float>(src[0]);
+            q_val = static_cast<float>(src[1]);
+        } else if (hdr.format[1] == 'B') {
+            const int8_t* src = reinterpret_cast<const int8_t*>(in_data + src_idx * 2);
+            i_val = static_cast<float>(src[0]);
+            q_val = static_cast<float>(src[1]);
+        } else if (hdr.format[1] == 'L') {
+            const int32_t* src = reinterpret_cast<const int32_t*>(in_data + src_idx * 8);
+            i_val = static_cast<float>(src[0]);
+            q_val = static_cast<float>(src[1]);
+        }
+        
+        out_ptr[i * 2] = i_val;
+        out_ptr[i * 2 + 1] = q_val;
+    }
+    
+    return out_buffer;
+}

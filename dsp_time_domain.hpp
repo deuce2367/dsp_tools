@@ -13,4 +13,11 @@ public:
         double duration = 0.0,
         size_t target_points = 10000
     );
+
+    static std::vector<uint8_t> extract_raw_iq(
+        const std::string& input_file,
+        double start_time = 0.0,
+        double duration = 0.0,
+        size_t max_points = 100000
+    );
 };

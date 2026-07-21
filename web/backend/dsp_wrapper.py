@@ -28,13 +28,13 @@ def run_psd(input_file: str, center_freq: float, zoom_center: float, zoom_bw: fl
     except Exception as e:
         raise RuntimeError(f"PSD Pipeline failed: {e}")
 
-def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, plot_fft: bool, plot_waterfall: bool, plot_time_domain: bool, colormap: str, width: int, height: int, theme: str = "dark", fill_mode: str = "gradient", fill_color: str = "#00FF00", zmin: float = -1000.0, zmax: float = 1000.0) -> bytes:
+def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, plot_fft: bool, plot_waterfall: bool, plot_time_domain: bool, plot_constellation: bool, colormap: str, width: int, height: int, theme: str = "dark", fill_mode: str = "gradient", fill_color: str = "#00FF00", zmin: float = -1000.0, zmax: float = 1000.0) -> bytes:
     """Runs Plot pipeline via native python bindings and returns the generated image bytes."""
     try:
         import dsp_plotter_py
         return dsp_plotter_py.run_plot_pipeline(
             input_file, out_format, center_freq, zoom_center, zoom_bw, start_time, duration,
-            window_size, smoothing, plot_fft, plot_waterfall, plot_time_domain, colormap, width, height, theme, fill_mode, fill_color, zmin, zmax
+            window_size, smoothing, plot_fft, plot_waterfall, plot_time_domain, plot_constellation, colormap, width, height, theme, fill_mode, fill_color, zmin, zmax
         )
     except Exception as e:
         raise RuntimeError(f"Plot Pipeline failed: {e}")
@@ -62,3 +62,11 @@ def run_time_domain(input_file: str, start_time: float = 0.0, duration: float = 
         return dsp_plotter_py.run_time_domain(input_file, start_time, duration, target_points)
     except Exception as e:
         raise RuntimeError(f"Time Domain Pipeline failed: {e}")
+
+def run_constellation_data(input_file: str, start_time: float = 0.0, duration: float = 0.0, max_points: int = 100000) -> bytes:
+    """Extracts raw IQ pairs for a constellation plot via native python bindings."""
+    try:
+        import dsp_plotter_py
+        return dsp_plotter_py.run_constellation_data(input_file, start_time, duration, max_points)
+    except Exception as e:
+        raise RuntimeError(f"Constellation Pipeline failed: {e}")

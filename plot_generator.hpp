@@ -97,4 +97,19 @@ public:
                                        const std::string& color_i_hex = "#00FF00",
                                        const std::string& color_q_hex = "#0088FF");
 
+    // Fast Constellation Plot rendering to memory buffer
+    static void generate_constellation_plot_mem(const std::vector<float>& iq_data,
+                                       std::vector<uint8_t>& out_buffer,
+                                       int out_width, int out_height,
+                                       double min_val, double max_val,
+                                       bool draw_grid = true, bool draw_labels = true,
+                                       const std::string& out_format = "png",
+                                       int num_x_ticks = 10, int num_y_ticks = 10,
+                                       const std::string& title = "",
+                                       int jpeg_quality = 90,
+                                       int png_compression = 8,
+                                       const std::string& font_path = "",
+                                       const std::string& theme = "dark",
+                                       const std::string& color_hex = "#00FF00");
+
 };

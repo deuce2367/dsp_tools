@@ -83,6 +83,8 @@ Once running, navigate to `http://localhost:8000` in your browser.
 
 **Features:**
 - **Interactive Waterfall & Spectrum Plots**: Leverages `sigplot` to render backend `dsp_fft` and `dsp_psd` generated X-Midas `Type 2000` bluefiles for hyper-fast interactive canvas navigation (zoom, pan, gain adjustment).
+- **Interactive Time Domain**: A dynamic Time Domain envelope that displays a fast min/max summary of massive complex or real data streams.
+- **Interactive Constellation**: For Complex Baseband (IQ) data, plot high-fidelity scatter plots (cmode 5) natively in the browser to analyze phase, modulation schemes (QPSK/QAM), and symbol dispersion.
 - **Static HD Plot Generator**: Export high-resolution JPEGs/PNGs via `dsp_plotter` directly from the UI.
 - **Dynamic DSP Adjustments**: Toggle colormaps (Jet, Grape, Turbo), configure FFT size & time-smoothing, and flip between Light and Dark themes.
 

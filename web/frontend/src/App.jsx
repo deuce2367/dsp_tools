@@ -27,11 +27,12 @@ const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colo
           plot_fft: panel.subType === 'fft',
           plot_waterfall: panel.subType === 'waterfall',
           plot_time_domain: panel.subType === 'time_domain',
+          plot_constellation: panel.subType === 'constellation',
           theme: theme,
           fill_mode: fillMode,
           fill_color: fillColor,
-          zmin: panel.subType === 'time_domain' ? -1.0 : (zmin !== '' ? Number(zmin) : null),
-          zmax: panel.subType === 'time_domain' ? 1.0 : (zmax !== '' ? Number(zmax) : null)
+          zmin: panel.subType === 'constellation' ? undefined : (zmin === '' ? undefined : Number(zmin)),
+          zmax: panel.subType === 'constellation' ? undefined : (zmax === '' ? undefined : Number(zmax))
         })
       });
       const data = await res.json();
@@ -177,7 +178,7 @@ function App() {
   const [uploadTimer, setUploadTimer] = useState(null);
   const [theme, setTheme] = useState('dark');
   const [fillMode, setFillMode] = useState('gradient');
-  const [fillColor, setFillColor] = useState('#00ff00');
+
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFileName, setImportFileName] = useState('');
@@ -441,8 +442,15 @@ function App() {
   };
 
   const handleStaticPlot = async (plotType) => {
-    const pId = plotType === 'fft' ? 'static-fft' : (plotType === 'time_domain' ? 'static-time-domain' : 'static-waterfall');
-    const pTitle = plotType === 'fft' ? 'Static Spectrum (FFT)' : (plotType === 'time_domain' ? 'Static Time Domain' : 'Static Waterfall (PSD)');
+    let pId = 'static-waterfall';
+    let pTitle = 'Static Waterfall (PSD)';
+    if (plotType === 'fft') {
+        pId = 'static-fft'; pTitle = 'Static Spectrum (FFT)';
+    } else if (plotType === 'time_domain') {
+        pId = 'static-time-domain'; pTitle = 'Static Time Domain';
+    } else if (plotType === 'constellation') {
+        pId = 'static-constellation'; pTitle = 'Static Constellation';
+    }
     setPanels(prev => {
         const existingIdx = prev.findIndex(p => p.id === pId);
         if (existingIdx >= 0) {
@@ -516,11 +524,45 @@ function App() {
         setPanels(prev => {
             if (prev.find(p => p.id === 'interactive-time-domain')) {
                 return prev.map(p => p.id === 'interactive-time-domain' ? { ...p, url: `/api/data/${data.output_file}` } : p);
+            } else {
+                return [...prev, { id: 'interactive-time-domain', type: 'interactive', subType: 'time_domain', title: 'Interactive Time Domain', url: `/api/data/${data.output_file}` }];
             }
-            return [...prev, { id: 'interactive-time-domain', type: 'interactive', subType: '1D', title: 'Interactive Time Domain', url: `/api/data/${data.output_file}` }];
         });
       }
-    } catch (e) { alert("Error: " + e); }
+    } catch (e) {
+      alert("Error generating Time Domain: " + e);
+    }
+    setLoading(false);
+  };
+
+  const handleInteractiveConstellation = async (overrideFile = null) => {
+    setLoading(true);
+    try {
+      const activeFile = overrideFile || file;
+      const res = await fetch('/api/run/constellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_file: activeFile,
+          start_time: 0.0,
+          duration: 0.0,
+          max_points: 100000
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) alert("Error running Constellation computation: " + (data.detail || JSON.stringify(data)));
+      else {
+        setPanels(prev => {
+            if (prev.find(p => p.id === 'interactive-constellation')) {
+                return prev.map(p => p.id === 'interactive-constellation' ? { ...p, url: `/api/data/${data.output_file}` } : p);
+            } else {
+                return [...prev, { id: 'interactive-constellation', type: 'interactive', subType: 'constellation', title: 'Interactive Constellation (IQ)', url: `/api/data/${data.output_file}` }];
+            }
+        });
+      }
+    } catch (e) {
+      alert("Error generating Constellation: " + e);
+    }
     setLoading(false);
   };
 
@@ -636,6 +678,7 @@ function App() {
                   if (p.id === 'interactive-fft') handleInteractiveFFT(tunerOutName);
                   if (p.id === 'interactive-psd') handleInteractivePSD(tunerOutName);
                   if (p.id === 'interactive-time-domain') handleInteractiveTimeDomain(tunerOutName);
+                  if (p.id === 'interactive-constellation') handleInteractiveConstellation(tunerOutName);
               });
               return next;
           });
@@ -845,10 +888,11 @@ function App() {
             </div>
           </div>
           
-          <div style={{display: 'flex', gap: '10px'}}>
-            <button onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum (FFT)</button>
-            <button onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall (PSD)</button>
-            <button onClick={() => handleInteractiveTimeDomain()} disabled={loading}>Time Domain</button>
+          <div style={{display: 'flex', gap: '5px'}}>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveTimeDomain()} disabled={loading}>Time Domain</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveConstellation()} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Requires Complex Data (e.g., CF, CI, CB)" : ""}>Constellation</button>
           </div>
           
           {loading && <p style={{color: 'var(--accent-color)', fontWeight: 'bold', margin: '5px 0'}}>Processing...</p>}
@@ -864,7 +908,7 @@ function App() {
               </select>
               {fillMode !== 'gradient' ? (
                 <div style={{marginTop: '5px'}}>
-                  <input type="color" value={fillColor} onChange={(e) => setFillColor(e.target.value)} style={{width: '100%', height: '25px', border: 'none', padding: '0', background: 'transparent', cursor: 'pointer'}} />
+                  <input type="color" value={fftColor} onChange={(e) => setFftColor(e.target.value)} style={{width: '100%', height: '25px', border: 'none', padding: '0', background: 'transparent', cursor: 'pointer'}} />
                 </div>
               ) : (
                 <div style={{marginTop: '5px', height: '25px', borderRadius: '3px', background: 
@@ -908,10 +952,11 @@ function App() {
             </div>
           </div>
 
-          <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-            <button onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum (FFT)</button>
-            <button onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall (PSD)</button>
-            <button onClick={() => handleStaticPlot('time_domain')} disabled={loading}>Time Domain</button>
+          <div style={{display: 'flex', gap: '5px', marginTop: '5px'}}>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('time_domain')} disabled={loading}>Time Domain</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('constellation')} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Requires Complex Data" : ""}>Constellation</button>
           </div>
           
         </div>
@@ -931,7 +976,7 @@ function App() {
                               panels.length === 1 ? '1fr' :
                               panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr' : '1fr 1fr') :
                               panels.length === 3 ? (layoutMode === 'vertical' ? '1fr 1fr 1fr' : '1fr') :
-                              panels.length <= 6 ? '1fr 1fr' :
+                              panels.length <= 8 ? '1fr 1fr' :
                               '1fr 1fr 1fr',
         }}>
           {panels.length === 0 && (
@@ -953,14 +998,13 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                        <SigPlot dataUrl={panel.url} type={panel.subType} zmin={panel.id === 'interactive-time-domain' ? -1 : zmin} zmax={panel.id === 'interactive-time-domain' ? 1 : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
-                      ) : (
+                            <SigPlot dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} sigplotColormap={sigplotColormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />                      ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
                         </div>
                       )}
                     </div>
-                    {panel.id !== 'interactive-time-domain' && (
+                    {(panel.id !== 'interactive-time-domain' && panel.subType !== 'constellation') && (
                       <>
                         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: '15px', marginLeft: '5px'}}>
                           <div style={{fontSize: '0.8rem', writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: 'var(--text-color)', fontWeight: 'bold'}}>Gain (dB)</div>
@@ -1007,7 +1051,7 @@ function App() {
                       colormap={colormap}
                       theme={theme}
                       fillMode={panel.subType === 'time_domain' ? 'none' : fillMode}
-                      fillColor={panel.subType === 'time_domain' ? fftColor : fillColor}
+                      fillColor={fftColor}
                       zmin={panel.subType === 'time_domain' ? -1 : zmin}
                       zmax={panel.subType === 'time_domain' ? 1 : zmax}
                     />
