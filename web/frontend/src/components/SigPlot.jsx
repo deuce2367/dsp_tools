@@ -29,8 +29,9 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
     }
 
     if (sigplotInstance.current && dataUrl) {
-      // Clear previous layers
+      // Clear previous layers and unzoom to reset axis limits for new data
       sigplotInstance.current.deoverlay();
+      sigplotInstance.current.unzoom();
       
       let layerOptions = {};
       if (type === '1D' || type === 'time_domain') {
@@ -69,12 +70,39 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
              
              // Auto-scaled! Tell parent what bounds were chosen
              if ((type === '1D' || type === 'time_domain') && layer.ymin !== undefined && layer.ymax !== undefined) {
-                 let newYmin = layer.ymin - 5.0;
-                 let newYmax = layer.ymax + 5.0;
+                 let ymin = layer.ymin;
+                 let ymax = layer.ymax;
+                 
+                 // If data is available, discount 10% rolloff edges to find true min/max
+                 if (type === '1D' && layer.data && layer.data.length > 0) {
+                     const arr = layer.data;
+                     const trim = Math.floor(arr.length * 0.1);
+                     let cmin = Infinity;
+                     let cmax = -Infinity;
+                     for (let i = trim; i < arr.length - trim; i++) {
+                         if (arr[i] < cmin) cmin = arr[i];
+                         if (arr[i] > cmax) cmax = arr[i];
+                     }
+                     if (cmin !== Infinity) {
+                         ymin = cmin;
+                         ymax = cmax;
+                     }
+                 }
+                 
+                 let newYmin = ymin - 5.0;
+                 let newYmax = ymax + 5.0;
+                 
+                 if (type === '1D') {
+                     // Cap dynamic range to 85 dB from peak to avoid deep nulls pulling it down
+                     newYmin = Math.max(newYmin, newYmax - 85.0);
+                 }
+                 
                  sigplotInstance.current.change_settings({ymin: newYmin, ymax: newYmax});
                  onDataLoaded(newYmin, newYmax);
              } else if (type === '2D' && layer.zmin !== undefined && layer.zmax !== undefined) {
-                 onDataLoaded(layer.zmin, layer.zmax);
+                 let newZmax = layer.zmax;
+                 let newZmin = Math.max(layer.zmin, newZmax - 85.0);
+                 onDataLoaded(newZmin, newZmax);
              }
           }
         }, layerOptions);

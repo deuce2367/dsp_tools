@@ -159,8 +159,8 @@ function App() {
   const [colormap, setColormap] = useState('jet');
   const [fftColor, setFftColor] = useState('#00ff00');
   const [isColorModalOpen, setIsColorModalOpen] = useState(false);
-  const [zmin, setZmin] = useState(-80);
-  const [zmax, setZmax] = useState(-20);
+  const [zmin, setZmin] = useState('');
+  const [zmax, setZmax] = useState('');
   const [gainBounds, setGainBounds] = useState([-150, 0]);
   const [gainHover, setGainHover] = useState(false);
 
@@ -210,6 +210,38 @@ function App() {
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  const switchFile = async (newFile) => {
+    setFile(newFile);
+    setZmin(''); setZmax(''); // Reset bounds for the new file
+    
+    let targetCenter = centerFreq;
+    try {
+        const res = await fetch(`/api/info/${newFile}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.center_freq !== undefined) {
+                targetCenter = data.center_freq;
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
+    
+    setPanels(prev => {
+        const hasFFT = prev.some(p => p.id === 'interactive-fft');
+        const hasPSD = prev.some(p => p.id === 'interactive-psd');
+        const hasTD = prev.some(p => p.id === 'interactive-time-domain');
+        const hasConst = prev.some(p => p.id === 'interactive-constellation');
+        
+        if (hasFFT) setTimeout(() => handleInteractiveFFT(newFile, targetCenter), 0);
+        if (hasPSD) setTimeout(() => handleInteractivePSD(newFile, targetCenter), 0);
+        if (hasTD) setTimeout(() => handleInteractiveTimeDomain(newFile), 0);
+        if (hasConst) setTimeout(() => handleInteractiveConstellation(newFile), 0);
+        
+        return prev;
+    });
   };
 
   const fetchFiles = async () => {
@@ -393,7 +425,7 @@ function App() {
       });
       if (res.ok) {
         await fetchFiles();
-        setFile(outputName);
+        switchFile(outputName);
       } else {
         const data = await res.json();
         alert("Conversion failed: " + (data.detail || "Unknown error"));
@@ -460,18 +492,18 @@ function App() {
     });
   };
 
-  const handleInteractivePSD = async (overrideFile = null) => {
+  const handleInteractivePSD = async (overrideFile = null, overrideCenterFreq = null) => {
     setLoading(true);
-    setZmin(-80); setZmax(-20);
     try {
       const activeFile = overrideFile || file;
       const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
+      const reqCenter = overrideCenterFreq !== null ? Number(overrideCenterFreq) : Number(centerFreq);
       const res = await fetch('/api/run/psd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: activeFile,
-          center_freq: Number(centerFreq),
+          center_freq: reqCenter,
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -485,6 +517,10 @@ function App() {
       }
       if (data.output_file) {
         setSigplotType('2D');
+        if (data.zmin !== undefined && data.zmax !== undefined) {
+            setZmin(prev => prev === '' ? Math.floor(data.zmin) : prev);
+            setZmax(prev => prev === '' ? Math.ceil(data.zmax) : prev);
+        }
         const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
         setPanels(prev => {
             const existingIdx = prev.findIndex(p => p.id === 'interactive-psd');
@@ -565,18 +601,18 @@ function App() {
     setLoading(false);
   };
 
-  const handleInteractiveFFT = async (overrideFile = null) => {
+  const handleInteractiveFFT = async (overrideFile = null, overrideCenterFreq = null) => {
     setLoading(true);
-    setZmin(-80); setZmax(-20);
     try {
       const activeFile = overrideFile || file;
       const reqWindowSize = getComputedFftSize(windowSize, {current: {clientWidth: 800}}, true);
+      const reqCenter = overrideCenterFreq !== null ? Number(overrideCenterFreq) : Number(centerFreq);
       const res = await fetch('/api/run/fft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input_file: activeFile,
-          center_freq: Number(centerFreq),
+          center_freq: reqCenter,
           zoom_bw: 0,
           window_size: reqWindowSize,
           smoothing: smoothing
@@ -590,6 +626,10 @@ function App() {
       }
       if (data.output_file) {
         setSigplotType('1D');
+        if (data.zmin !== undefined && data.zmax !== undefined) {
+            setZmin(prev => prev === '' ? Math.floor(data.zmin) : prev);
+            setZmax(prev => prev === '' ? Math.ceil(data.zmax) : prev);
+        }
         const newUrl = `/api/data/${data.output_file}?t=${Date.now()}`;
         setPanels(prev => {
             const existingIdx = prev.findIndex(p => p.id === 'interactive-fft');
@@ -609,8 +649,10 @@ function App() {
   };
 
   const handleDataLoaded = (min_val, max_val) => {
-    // Left empty since we want to keep static -150 to 0 bounds for the gain sliders
-    // and not overwrite them with auto-scaled data min/max values.
+    if (zmin === '' && zmax === '') {
+        setZmin(Math.floor(min_val));
+        setZmax(Math.ceil(max_val));
+    }
   };
 
   const handleZoom = (bounds) => {
@@ -667,21 +709,8 @@ function App() {
         alert("Error tuning: " + (data.detail || JSON.stringify(data)));
       } else {
         await fetchFiles();
-        setFile(tunerOutName);
+        switchFile(tunerOutName);
         setZoomBounds(null);
-        
-        setTimeout(() => {
-          setPanels(prev => {
-              const next = [...prev];
-              next.forEach(p => {
-                  if (p.id === 'interactive-fft') handleInteractiveFFT(tunerOutName);
-                  if (p.id === 'interactive-psd') handleInteractivePSD(tunerOutName);
-                  if (p.id === 'interactive-time-domain') handleInteractiveTimeDomain(tunerOutName);
-                  if (p.id === 'interactive-constellation') handleInteractiveConstellation(tunerOutName);
-              });
-              return next;
-          });
-        }, 300);
       }
     } catch(e) {
       alert("Error: " + e);
@@ -844,7 +873,7 @@ function App() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                 </a>
               )}
-              <select value={file} onChange={(e) => setFile(e.target.value)} style={{ flex: 1 }}>
+              <select value={file} onChange={e => switchFile(e.target.value)} style={{flex: 1, margin: 0}}>
                 {availableFiles.map(f => <option key={f} value={f}>{f}</option>)}
                 {availableFiles.length === 0 && <option value={file}>{file}</option>}
               </select>
@@ -1020,7 +1049,8 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                            <SigPlot dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} colormap={colormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />                      ) : (
+                            <SigPlot key={panel.url} dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} colormap={colormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
+                      ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>
                         </div>
@@ -1140,6 +1170,12 @@ function App() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{pointerEvents: 'none'}}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                 </div>
                 <span style={{opacity: 0.5, fontSize: '0.9rem'}}>{importTimecode.indexOf('T') !== -1 ? importTimecode.substring(0, importTimecode.indexOf('T')) : ''}</span>
+                <button type="button" onClick={() => {
+                   const now = new Date();
+                   setImportTimecode(now.toISOString().replace('Z', '000Z'));
+                }} style={{width: '28px', height: '28px', background: 'var(--input-bg)', borderRadius: '4px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, margin: 0, cursor: 'pointer'}} title="Set to Now">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                </button>
                 <input type="text" placeholder="HH:MM:SS.DDDDDD" value={importTimecode.indexOf('T') !== -1 ? importTimecode.substring(importTimecode.indexOf('T')+1, importTimecode.indexOf('Z') !== -1 ? importTimecode.indexOf('Z') : importTimecode.length) : "00:00:00.000000"} onChange={(e) => {
                   const datePart = importTimecode.indexOf('T') !== -1 ? importTimecode.substring(0, importTimecode.indexOf('T')) : '1970-01-01';
                   setImportTimecode(datePart + 'T' + e.target.value + 'Z');

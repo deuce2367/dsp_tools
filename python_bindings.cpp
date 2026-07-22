@@ -177,10 +177,27 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         
         std::vector<float> out_f(out_data.size());
-        for (size_t i = 0; i < out_data.size(); ++i) out_f[i] = static_cast<float>(out_data[i]);
+        
+        double cmin = 1e9;
+        double cmax = -1e9;
+        size_t trim = out_data.size() * 0.1;
+        for (size_t i = 0; i < out_data.size(); ++i) {
+            out_f[i] = static_cast<float>(out_data[i]);
+            if (i >= trim && i < out_data.size() - trim) {
+                if (out_data[i] < cmin) cmin = out_data[i];
+                if (out_data[i] > cmax) cmax = out_data[i];
+            }
+        }
+        
+        // Cap dynamic range to 85 dB
+        if (cmax != -1e9) {
+            cmin = std::max(cmin, cmax - 85.0);
+        }
+        
         buffer.append(reinterpret_cast<const char*>(out_f.data()), out_f.size() * sizeof(float));
         
-        return py::bytes(buffer);
+        py::gil_scoped_acquire acquire;
+        return py::make_tuple(py::bytes(buffer), cmin, cmax);
     }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
 
     m.def("run_psd_pipeline", [](const std::string& input_file, 
@@ -215,13 +232,34 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         buffer.reserve(sizeof(BlueHeader) + total_elements * sizeof(float));
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         
+        double cmin = 1e9;
+        double cmax = -1e9;
+        
+        const std::vector<double>& avg_data = result.avg_fft;
+        if (!avg_data.empty()) {
+            size_t avg_trim = avg_data.size() * 0.1;
+            for (size_t i = 0; i < avg_data.size(); ++i) {
+                if (i >= avg_trim && i < avg_data.size() - avg_trim) {
+                    if (avg_data[i] < cmin) cmin = avg_data[i];
+                    if (avg_data[i] > cmax) cmax = avg_data[i];
+                }
+            }
+        }
+        
         for (const auto& row : result.spectrogram) {
             std::vector<float> row_f(row.size());
-            for (size_t i = 0; i < row.size(); ++i) row_f[i] = static_cast<float>(row[i]);
+            for (size_t i = 0; i < row.size(); ++i) {
+                row_f[i] = static_cast<float>(row[i]);
+            }
             buffer.append(reinterpret_cast<const char*>(row_f.data()), row_f.size() * sizeof(float));
         }
         
-        return py::bytes(buffer);
+        if (cmax != -1e9) {
+            cmin = std::max(cmin, cmax - 85.0);
+        }
+        
+        py::gil_scoped_acquire acquire;
+        return py::make_tuple(py::bytes(buffer), cmin, cmax);
     }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
 
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
@@ -245,19 +283,26 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         auto result = engine.process_file_streaming(config);
         
-        double actual_max_db = -1000.0;
-        double sum_db = 0.0; size_t count_db = 0;
-        if (!result.spectrogram.empty()) {
-            for (const auto& row : result.spectrogram) {
-                for (double val : row) {
-                    if (val > actual_max_db) actual_max_db = val;
-                    sum_db += val; count_db++;
+        double cmin = 1e9;
+        double cmax = -1e9;
+        const std::vector<double>& avg_data = result.avg_fft;
+        if (!avg_data.empty()) {
+            size_t avg_trim = avg_data.size() * 0.1;
+            for (size_t i = 0; i < avg_data.size(); ++i) {
+                if (i >= avg_trim && i < avg_data.size() - avg_trim) {
+                    if (avg_data[i] < cmin) cmin = avg_data[i];
+                    if (avg_data[i] > cmax) cmax = avg_data[i];
                 }
             }
         }
-        double mean_db = count_db > 0 ? (sum_db / count_db) : -100.0;
-        double final_min_db = (zmin > -999.0) ? zmin : (mean_db - 15.0);
-        double final_max_db = (zmax < 999.0) ? zmax : actual_max_db;
+        if (cmax != -1e9) {
+            cmin = std::max(cmin, cmax - 85.0);
+        } else {
+            cmin = -100.0; cmax = -20.0;
+        }
+
+        double final_min_db = (zmin > -999.0) ? zmin : cmin;
+        double final_max_db = (zmax < 999.0) ? zmax : cmax;
 
         double total_duration_sec = (config.sample_rate > 0.0) ? result.spectrogram.size() * result.actual_step_size / config.sample_rate : 0.0;
         double z_center = result.actual_zoom_center;

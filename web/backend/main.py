@@ -14,6 +14,10 @@ import time
 import asyncio
 import collections
 from typing import Optional
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("dsp_backend")
 
 app = FastAPI(title="DSP Web Interface")
 
@@ -202,7 +206,7 @@ async def run_tuner(req: TunerRequest):
             req.start_time,
             req.duration,
             req.file_center,
-            True, # file_center_provided
+            req.file_center != 0.0, # file_center_provided
             req.quality
         )
         return {"status": "success", "output_file": req.output_file}
@@ -228,7 +232,8 @@ async def run_fft(req: FFTRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"fft_{uuid.uuid4().hex[:8]}.prm"
-        data = await asyncio.to_thread(
+        logger.info(f"Generating FFT: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}")
+        data, cmin, cmax = await asyncio.to_thread(
             dsp_wrapper.run_fft,
             in_path,
             req.center_freq,
@@ -239,8 +244,9 @@ async def run_fft(req: FFTRequest):
             req.window_size,
             req.smoothing
         )
+        logger.info(f"FFT computed. Middle 80% passband min={cmin:.2f} dB, peak max={cmax:.2f} dB.")
         add_to_cache(out_id, data)
-        return {"status": "success", "output_file": out_id}
+        return {"status": "success", "output_file": out_id, "zmin": cmin, "zmax": cmax}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -261,7 +267,8 @@ async def run_psd(req: PSDRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"psd_{uuid.uuid4().hex[:8]}.prm"
-        data = await asyncio.to_thread(
+        logger.info(f"Generating PSD: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}")
+        data, cmin, cmax = await asyncio.to_thread(
             dsp_wrapper.run_psd,
             in_path,
             req.center_freq,
@@ -272,8 +279,9 @@ async def run_psd(req: PSDRequest):
             req.window_size,
             req.smoothing
         )
+        logger.info(f"PSD computed. Middle 80% passband min={cmin:.2f} dB, peak max={cmax:.2f} dB.")
         add_to_cache(out_id, data)
-        return {"status": "success", "output_file": out_id}
+        return {"status": "success", "output_file": out_id, "zmin": cmin, "zmax": cmax}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

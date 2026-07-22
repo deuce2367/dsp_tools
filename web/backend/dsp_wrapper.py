@@ -8,8 +8,8 @@ if DSP_BIN_DIR not in sys.path:
 
 import os
 
-def run_fft(input_file: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int) -> bytes:
-    """Runs FFT pipeline via native python bindings and returns the generated Type 1000 Bluefile bytes."""
+def run_fft(input_file: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int) -> tuple:
+    """Runs FFT pipeline via native python bindings and returns the generated Type 1000 Bluefile bytes and detected min/max dB."""
     try:
         import dsp_plotter_py
         return dsp_plotter_py.run_fft_pipeline(
@@ -18,8 +18,8 @@ def run_fft(input_file: str, center_freq: float, zoom_center: float, zoom_bw: fl
     except Exception as e:
         raise RuntimeError(f"FFT Pipeline failed: {e}")
 
-def run_psd(input_file: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int) -> bytes:
-    """Runs PSD pipeline via native python bindings and returns the generated Type 2000 Bluefile bytes."""
+def run_psd(input_file: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int) -> tuple:
+    """Runs PSD pipeline via native python bindings and returns the generated Type 2000 Bluefile bytes and detected min/max dB."""
     try:
         import dsp_plotter_py
         return dsp_plotter_py.run_psd_pipeline(
