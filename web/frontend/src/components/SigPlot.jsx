@@ -48,7 +48,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
           console.log("Sigplot layer loaded successfully:", layer);
 
           if (zmin !== '' && zmin !== undefined && zmax !== '' && zmax !== undefined) {
-             let opts = { cmap: sigplotColormap };
+             let opts = { cmap: cmapInt };
              if (type === '1D') {
                  opts.ymin = parseFloat(zmin);
                  opts.ymax = parseFloat(zmax);
