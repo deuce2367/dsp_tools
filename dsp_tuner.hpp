@@ -32,5 +32,6 @@ void run_tuner_pipeline(
     double duration,
     double file_center, 
     bool file_center_provided, 
-    TunerQuality quality
+    TunerQuality quality,
+    int oversample_factor
 );

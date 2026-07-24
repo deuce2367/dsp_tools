@@ -111,4 +111,6 @@ button:hover {
   background-color: black;
 }
 
-
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}

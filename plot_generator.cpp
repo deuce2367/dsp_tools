@@ -367,8 +367,11 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 int y_pos = plot_y + (plot_h * i) / num_y_ticks;
                 
                 std::ostringstream ss;
-                ss << std::fixed << std::setprecision(0) << db_val;
-                if (is_db) ss << " dB";
+                if (is_db) {
+                    ss << std::fixed << std::setprecision(0) << db_val << " dB";
+                } else {
+                    ss << std::defaultfloat << std::setprecision(3) << db_val;
+                }
                 
                 // Draw tick mark
                 draw_line(pixels, full_width, full_height, plot_x - text_scale, y_pos, plot_x, y_pos, axis_color);

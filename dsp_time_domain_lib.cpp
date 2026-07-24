@@ -8,7 +8,7 @@
 #include <vector>
 
 template<typename T>
-std::vector<uint8_t> time_domain_data(const std::string& input_file, double start_time, double duration, size_t target_points, double norm_factor) {
+std::vector<uint8_t> time_domain_data(const std::string& input_file, double start_time, double duration, size_t target_points, double norm_factor, const std::string& mode) {
     BlueHeader hdr = read_bluefile_header(input_file);
     MmapHandle mmap_in(input_file);
     
@@ -57,11 +57,12 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     spdlog::info("Actual points:       {}", actual_points);
     spdlog::info("Aggregation window:  {} frames", frames_per_point);
     
-    size_t floats_per_bucket = is_complex ? 4 : 2;
+    bool output_complex = is_complex && (mode == "complex" || mode.empty());
+    size_t floats_per_bucket = output_complex ? 4 : 2;
     std::vector<float> time_domain_out(actual_points * floats_per_bucket, 0.0f);
 
     for (size_t i = 0; i < actual_points; ++i) {
-        if (is_complex) {
+        if (output_complex) {
             float min_i = 1e9f, max_i = -1e9f;
             float min_q = 1e9f, max_q = -1e9f;
             
@@ -75,7 +76,6 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
                 if (q_val < min_q) min_q = q_val;
                 if (q_val > max_q) max_q = q_val;
             }
-            // Interleaved I and Q min/max pairs (so SigPlot draws solid line between I_min->I_max and Q_min->Q_max)
             time_domain_out[i * 4 + 0] = min_i;
             time_domain_out[i * 4 + 1] = min_q;
             time_domain_out[i * 4 + 2] = max_i;
@@ -84,8 +84,19 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
             float min_v = 1e9f, max_v = -1e9f;
             
             for (size_t j = 0; j < frames_per_point; ++j) {
-                size_t idx = (i * frames_per_point + j);
-                float val = static_cast<float>(in_ptr[idx]) / norm_factor;
+                float val = 0.0f;
+                if (is_complex) {
+                    size_t idx = (i * frames_per_point + j) * 2;
+                    float i_val = static_cast<float>(in_ptr[idx]) / norm_factor;
+                    float q_val = static_cast<float>(in_ptr[idx + 1]) / norm_factor;
+                    if (mode == "imag") val = q_val;
+                    else if (mode == "magnitude") val = std::sqrt(i_val * i_val + q_val * q_val);
+                    else if (mode == "phase") val = std::atan2(q_val, i_val);
+                    else val = i_val; // default real
+                } else {
+                    size_t idx = (i * frames_per_point + j);
+                    val = static_cast<float>(in_ptr[idx]) / norm_factor;
+                }
                 
                 if (val < min_v) min_v = val;
                 if (val > max_v) max_v = val;
@@ -97,7 +108,7 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
 
     // Update Header for output
     char out_format[2];
-    out_format[0] = is_complex ? 'C' : 'S';
+    out_format[0] = output_complex ? 'C' : 'S';
     out_format[1] = 'F'; // Float32
     
     hdr.format[0] = out_format[0];
@@ -106,7 +117,7 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     std::strncpy(hdr.data_rep, "EEEI", 4);
     
     // The new xdelta is half the time per point because we output 2 samples per bucket (min and max)
-    hdr.xdelta = static_cast<double>(frames_per_point) / sample_rate / 2.0;
+    hdr.xdelta = static_cast<double>(frames_per_point) / sample_rate / (output_complex ? 2.0 : 1.0);
     hdr.data_size = time_domain_out.size() * sizeof(float);
     
     // Write out bluefile
@@ -126,7 +137,8 @@ std::vector<uint8_t> DspTimeDomain::generate_time_domain_envelope(
     const std::string& input_file,
     double start_time,
     double duration,
-    size_t target_points
+    size_t target_points,
+    const std::string& mode
 ) {
     BlueHeader hdr = read_bluefile_header(input_file);
     
@@ -137,15 +149,15 @@ std::vector<uint8_t> DspTimeDomain::generate_time_domain_envelope(
     else if (data_type == 'L') norm_factor = 2147483648.0;
 
     if (data_type == 'B') {
-        return time_domain_data<int8_t>(input_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int8_t>(input_file, start_time, duration, target_points, norm_factor, mode);
     } else if (data_type == 'I') {
-        return time_domain_data<int16_t>(input_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int16_t>(input_file, start_time, duration, target_points, norm_factor, mode);
     } else if (data_type == 'L') {
-        return time_domain_data<int32_t>(input_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<int32_t>(input_file, start_time, duration, target_points, norm_factor, mode);
     } else if (data_type == 'F') {
-        return time_domain_data<float>(input_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<float>(input_file, start_time, duration, target_points, norm_factor, mode);
     } else if (data_type == 'D') {
-        return time_domain_data<double>(input_file, start_time, duration, target_points, norm_factor);
+        return time_domain_data<double>(input_file, start_time, duration, target_points, norm_factor, mode);
     } else {
         throw std::runtime_error("Unsupported data format type: " + std::string(1, data_type));
     }

@@ -3,10 +3,11 @@
 #include <kfr/dsp.hpp>
 #include <kfr/dft.hpp>
 #include <kfr/io.hpp>
-#include <CLI/CLI.hpp>
+
 #include <spdlog/spdlog.h>
 #include <string>
 #include <stdexcept>
+#include <chrono>
 #include <iostream>
 #include <cmath>
 #include <vector>
@@ -310,7 +311,21 @@ void process_whitener(const std::string& input_file, const std::string& output_f
     if (plan_c) delete plan_c;
 }
 
+void run_whitener_pipeline(const std::string& input_file, const std::string& output_file, size_t fft_size, double alpha, double blank_threshold, size_t blank_window, double output_gain, double strength, const std::string& mode, double excess_leak) {
+    BlueHeader hdr = read_bluefile_header(input_file);
+    char in_type = hdr.format[1];
+    
+    if (in_type == 'B') process_whitener<int8_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    else if (in_type == 'I') process_whitener<int16_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    else if (in_type == 'L') process_whitener<int32_t>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    else if (in_type == 'F') process_whitener<float>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    else if (in_type == 'D') process_whitener<double>(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    else throw std::runtime_error("Unsupported input data type format");
+}
+
+#ifndef DSP_TOOLS_PYTHON_MODULE
 #ifndef DSP_TOOLS_TEST_MODE
+#include <CLI/CLI.hpp>
 int main(int argc, char** argv) {
     CLI::App app{"DSP Whitener - Time-Domain Pulse Blanker and Frequency-Domain AGC / Transmultiplexer Interference Canceler"};
     
@@ -358,4 +373,5 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif
 #endif

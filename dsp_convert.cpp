@@ -2,6 +2,7 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
+#include <chrono>
 
 int main(int argc, char** argv) {
     CLI::App app{"DSP Convert: Imports WAV and RAW files into X-Midas Bluefiles"};

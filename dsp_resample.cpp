@@ -2,10 +2,11 @@
 #include <kfr/base.hpp>
 #include <kfr/dsp.hpp>
 #include <kfr/io.hpp>
-#include <CLI/CLI.hpp>
+
 #include <spdlog/spdlog.h>
 #include <string>
 #include <stdexcept>
+#include <chrono>
 #include <iostream>
 #include <cmath>
 #include <numeric>
@@ -14,6 +15,7 @@ using namespace kfr;
 
 template<typename T>
 void resample_data(const std::string& input_file, const std::string& output_file, double new_rate, int64_t interp_factor, int64_t dec_factor, resample_quality quality) {
+    auto exec_start_time = std::chrono::high_resolution_clock::now();
     BlueHeader hdr = read_bluefile_header(input_file);
     MmapHandle mmap_in(input_file);
     
@@ -171,10 +173,33 @@ void resample_data(const std::string& input_file, const std::string& output_file
     
     write_bluefile_ext_header(output_file, ext_data);
     
-    spdlog::info("Resampling complete.");
+    auto exec_end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = exec_end_time - exec_start_time;
+    spdlog::info("Resampling complete. Runtime: {:.3f} seconds", diff.count());
 }
 
+void run_resample_pipeline(const std::string& input_file, const std::string& output_file, double new_rate, const std::string& quality_str) {
+    resample_quality quality = resample_quality::normal;
+    if (quality_str == "draft") quality = resample_quality::draft;
+    else if (quality_str == "low") quality = resample_quality::low;
+    else if (quality_str == "normal") quality = resample_quality::normal;
+    else if (quality_str == "high") quality = resample_quality::high;
+    else if (quality_str == "perfect") quality = resample_quality::perfect;
+    
+    BlueHeader hdr = read_bluefile_header(input_file);
+    char type = hdr.format[1];
+    
+    if (type == 'B') resample_data<int8_t>(input_file, output_file, new_rate, 1, 1, quality);
+    else if (type == 'I') resample_data<int16_t>(input_file, output_file, new_rate, 1, 1, quality);
+    else if (type == 'L') resample_data<int32_t>(input_file, output_file, new_rate, 1, 1, quality);
+    else if (type == 'F') resample_data<float>(input_file, output_file, new_rate, 1, 1, quality);
+    else if (type == 'D') resample_data<double>(input_file, output_file, new_rate, 1, 1, quality);
+    else throw std::runtime_error("Unsupported data type format");
+}
+
+#ifndef DSP_TOOLS_PYTHON_MODULE
 #ifndef DSP_TOOLS_TEST_MODE
+#include <CLI/CLI.hpp>
 int main(int argc, char** argv) {
     CLI::App app{"DSP Resampler for X-Midas Bluefiles\n"
                  "High-performance tool to resample (interpolate and decimate) real and complex bluefiles.\n"
@@ -228,4 +253,5 @@ int main(int argc, char** argv) {
     
     return 0;
 }
+#endif
 #endif

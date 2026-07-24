@@ -44,6 +44,9 @@ int main(int argc, char** argv) {
     auto opt_fc = app.add_option("-f,--file-center", file_center, "Original Center Frequency of the input file (Hz). Default: 0 for complex inputs, fs/4 for real inputs.");
     app.add_option("-q,--quality", quality_str, "Resampling Filter Quality (draft, low, normal, high, perfect). Higher quality yields steeper transition bands.");
     
+    int oversample = 1;
+    app.add_option("-s,--oversample", oversample, "Oversample factor (1, 2, 4, 8) to use before decimation (default: 1)");
+
     CLI11_PARSE(app, argc, argv);
     
     if (opt_fc->count() > 0) {
@@ -62,7 +65,7 @@ int main(int argc, char** argv) {
     }
     
     try {
-        run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
+        run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample);
     } catch (const std::exception& e) {
         spdlog::error("Error: {}", e.what());
         return 1;

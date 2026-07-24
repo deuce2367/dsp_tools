@@ -2,17 +2,25 @@
 #include "bluefile_io.hpp"
 #include <kfr/base.hpp>
 #include <kfr/dsp.hpp>
+#include <kfr/dft.hpp>
+#include <kfr/dft/convolution.hpp>
 #include <kfr/io.hpp>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
+#include <chrono>
 #include <iostream>
 #include <cmath>
 #include <numeric>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 using namespace kfr;
 
 template<typename T>
-void tune_data(const std::string& input_file, const std::string& output_file, double center, double bandwidth, double start_time, double duration, double file_center, bool file_center_provided, resample_quality quality) {
+void tune_data(const std::string& input_file, const std::string& output_file, double center, double bandwidth, double start_time, double duration, double file_center, bool file_center_provided, resample_quality quality, int oversample_factor) {
+    auto exec_start_time = std::chrono::high_resolution_clock::now();
     BlueHeader hdr = read_bluefile_header(input_file);
     MmapHandle mmap_in(input_file);
     
@@ -55,13 +63,25 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     // Automatic optimal sample rate using integer decimation
     int64_t dec_factor = static_cast<int64_t>(std::floor(sample_rate / bandwidth));
     if (dec_factor < 1) dec_factor = 1;
-    if (dec_factor > 1024) dec_factor = 1024; // Cap decimation to prevent massive FIR filters
     
     int64_t interp_factor = 1;
-    double output_rate = sample_rate / static_cast<double>(dec_factor);
+    if (oversample_factor > 1) {
+        if (dec_factor % oversample_factor == 0) {
+            dec_factor /= oversample_factor;
+        } else {
+            int64_t gcd = std::gcd(dec_factor, static_cast<int64_t>(oversample_factor));
+            dec_factor /= gcd;
+            interp_factor = oversample_factor / gcd;
+        }
+    }
     
-    int64_t log_interp = 1;
-    int64_t log_dec = dec_factor;
+    if (dec_factor > 1024) dec_factor = 1024; // Cap decimation to prevent massive FIR filters
+    
+    double output_rate = sample_rate * static_cast<double>(interp_factor) / static_cast<double>(dec_factor);
+    
+    int64_t gcd = std::gcd(interp_factor, dec_factor);
+    int64_t log_interp = interp_factor / gcd;
+    int64_t log_dec = dec_factor / gcd;
     
     spdlog::info("--- Tuner Properties ---");
     spdlog::info("Input file:          {}", input_file);
@@ -132,48 +152,140 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     
     fbase phase_step = std::fmod(shift_freq / sample_rate, 1.0);
     
-    #pragma omp parallel for
-    for (size_t i = 0; i < num_frames; ++i) {
-        fbase p = std::fmod(i * phase_step, 1.0);
-        fbase nco_i = std::cos(p * 2.0 * M_PI);
-        fbase nco_q = std::sin(p * 2.0 * M_PI);
+    #pragma omp parallel
+    {
+#ifdef _OPENMP
+        int thread_id = omp_get_thread_num();
+        int num_threads = omp_get_num_threads();
+#else
+        int thread_id = 0;
+        int num_threads = 1;
+#endif
         
-        if (is_complex) {
-            fbase ii = static_cast<fbase>(in_ptr[i * 2]);
-            fbase qq = static_cast<fbase>(in_ptr[i * 2 + 1]);
-            mix_i[i] = ii * nco_i - qq * nco_q;
-            mix_q[i] = ii * nco_q + qq * nco_i;
-        } else {
-            fbase ii = static_cast<fbase>(in_ptr[i]);
-            mix_i[i] = ii * nco_i;
-            mix_q[i] = ii * nco_q;
+        size_t chunk_size = (num_frames + num_threads - 1) / num_threads;
+        size_t start = thread_id * chunk_size;
+        size_t end = std::min(start + chunk_size, num_frames);
+        
+        if (start < end) {
+            double p_step = phase_step * 2.0 * M_PI;
+            double step_cos = std::cos(p_step);
+            double step_sin = std::sin(p_step);
+            
+            double p_start = std::fmod(start * phase_step, 1.0) * 2.0 * M_PI;
+            double current_cos = std::cos(p_start);
+            double current_sin = std::sin(p_start);
+            
+            for (size_t i = start; i < end; ++i) {
+                fbase nco_i = current_cos;
+                fbase nco_q = current_sin;
+                
+                if (is_complex) {
+                    fbase ii = static_cast<fbase>(in_ptr[i * 2]);
+                    fbase qq = static_cast<fbase>(in_ptr[i * 2 + 1]);
+                    mix_i[i] = ii * nco_i - qq * nco_q;
+                    mix_q[i] = ii * nco_q + qq * nco_i;
+                } else {
+                    fbase ii = static_cast<fbase>(in_ptr[i]);
+                    mix_i[i] = ii * nco_i;
+                    mix_q[i] = ii * nco_q;
+                }
+                
+                // Advance
+                double next_c = current_cos * step_cos - current_sin * step_sin;
+                double next_s = current_sin * step_cos + current_cos * step_sin;
+                current_cos = next_c;
+                current_sin = next_s;
+                
+                // Re-normalize periodically inside large chunks to prevent drift
+                if (i % 1048576 == 0 && i > start) {
+                    double p = std::fmod(i * phase_step, 1.0) * 2.0 * M_PI;
+                    current_cos = std::cos(p);
+                    current_sin = std::sin(p);
+                }
+            }
         }
     }
     
-    univector<fbase> out_f_i(total_out_frames);
-    univector<fbase> out_f_q(total_out_frames);
+    if (oversample_factor > 1) {
+        fbase f_cutoff = (bandwidth / 2.0) / sample_rate;
+        size_t taps = 1023; // High quality FIR filter
+        univector<fbase> lpf_taps(taps);
+        fir_lowpass(lpf_taps, f_cutoff, to_handle(window_blackman_harris(taps)), true);
+        
+        univector<fbase> lpf_taps_copy = lpf_taps;
+        convolve_filter<fbase> filter_i(lpf_taps, 4096);
+        convolve_filter<fbase> filter_q(lpf_taps_copy, 4096);
+        
+        univector<fbase> filtered_i(num_frames);
+        univector<fbase> filtered_q(num_frames);
+        
+        const size_t block_size = 1048576; // 1M frames per block
+        size_t frames_processed = 0;
+        
+        while (frames_processed < num_frames) {
+            size_t frames_to_process = std::min(block_size, num_frames - frames_processed);
+            
+            auto in_i_ref = mix_i.slice(frames_processed, frames_to_process);
+            auto out_i_ref = filtered_i.slice(frames_processed, frames_to_process);
+            
+            auto in_q_ref = mix_q.slice(frames_processed, frames_to_process);
+            auto out_q_ref = filtered_q.slice(frames_processed, frames_to_process);
+            
+            #pragma omp parallel sections
+            {
+                #pragma omp section
+                {
+                    filter_i.apply(out_i_ref, in_i_ref);
+                }
+                #pragma omp section
+                {
+                    filter_q.apply(out_q_ref, in_q_ref);
+                }
+            }
+            
+            frames_processed += frames_to_process;
+        }
+        
+        mix_i = std::move(filtered_i);
+        mix_q = std::move(filtered_q);
+        
+        double lpf_delay_samples = taps / 2;
+        double lpf_delay_sec = lpf_delay_samples / sample_rate;
+        
+        // Output header timecode already advanced by resampler delay, add LPF delay
+        hdr.timecode -= lpf_delay_sec;
+        spdlog::info("Added FIR LPF delay: {} samples ({} sec). Corrected timecode: {:.9f}", lpf_delay_samples, lpf_delay_sec, hdr.timecode);
+    }
     
+    // Pad buffers to avoid KFR SIMD overruns and handle slight length variations
+    univector<fbase> out_f_i(total_out_frames + 4096);
+    univector<fbase> out_f_q(total_out_frames + 4096);
+    
+    size_t processed_i = 0, processed_q = 0;
     #pragma omp parallel sections
     {
         #pragma omp section
         {
-            resampler_i.process(out_f_i, mix_i);
+            processed_i = resampler_i.process(out_f_i, mix_i);
         }
         #pragma omp section
         {
-            resampler_q.process(out_f_q, mix_q);
+            processed_q = resampler_q.process(out_f_q, mix_q);
         }
     }
     
-    std::vector<T> out_final(total_out_frames * out_samples_per_frame);
+    size_t actual_out_frames = std::min({total_out_frames, processed_i, processed_q});
+    std::vector<T> out_final(actual_out_frames * out_samples_per_frame);
+    
     #pragma omp parallel for
-    for (size_t i = 0; i < total_out_frames; ++i) {
+    for (size_t i = 0; i < actual_out_frames; ++i) {
         out_final[i * 2] = static_cast<T>(out_f_i[i]);
         out_final[i * 2 + 1] = static_cast<T>(out_f_q[i]);
     }
+
     
     const uint8_t* out_bytes = reinterpret_cast<const uint8_t*>(out_final.data());
-    size_t to_write = hdr.data_size;
+    size_t to_write = std::min<size_t>(hdr.data_size, actual_out_frames * out_samples_per_frame * sizeof(T));
     size_t written = 0;
     while (written < to_write) {
         ssize_t res = write(out_fd, out_bytes + written, to_write - written);
@@ -187,7 +299,9 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     
     write_bluefile_ext_header(output_file, ext_data);
     
-    spdlog::info("Tuning complete.");
+    auto exec_end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = exec_end_time - exec_start_time;
+    spdlog::info("Tuning complete. Runtime: {:.3f} seconds", diff.count());
 }
 
 void run_tuner_pipeline(
@@ -199,7 +313,8 @@ void run_tuner_pipeline(
     double duration,
     double file_center, 
     bool file_center_provided, 
-    TunerQuality quality_enum
+    TunerQuality quality_enum,
+    int oversample_factor
 ) {
     resample_quality quality = resample_quality::normal;
     switch (quality_enum) {
@@ -210,13 +325,14 @@ void run_tuner_pipeline(
         case TunerQuality::Perfect: quality = resample_quality::perfect; break;
     }
 
+    auto exec_start_time = std::chrono::high_resolution_clock::now();
     BlueHeader hdr = read_bluefile_header(input_file);
     char type = hdr.format[1];
     
-    if (type == 'B') tune_data<int8_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
-    else if (type == 'I') tune_data<int16_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
-    else if (type == 'L') tune_data<int32_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
-    else if (type == 'F') tune_data<float>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
-    else if (type == 'D') tune_data<double>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
+    if (type == 'B') tune_data<int8_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
+    else if (type == 'I') tune_data<int16_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
+    else if (type == 'L') tune_data<int32_t>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
+    else if (type == 'F') tune_data<float>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
+    else if (type == 'D') tune_data<double>(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
     else throw std::runtime_error("Unsupported data type format");
 }

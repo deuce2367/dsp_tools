@@ -59,6 +59,8 @@ class FFTRequest(BaseModel):
     duration: float = 0
     window_size: int = 1024
     smoothing: int = 1
+    window_type: str = "blackman-harris"
+    stride_ratio: float = 0.0
 
 class PSDRequest(BaseModel):
     input_file: str
@@ -69,12 +71,15 @@ class PSDRequest(BaseModel):
     duration: float = 0
     window_size: int = 1024
     smoothing: int = 1
+    window_type: str = "blackman-harris"
+    stride_ratio: float = 0.0
 
 class TimeDomainRequest(BaseModel):
     input_file: str
     start_time: float = 0
     duration: float = 0
     target_points: int = 10000
+    mode: str = "complex"
 
 class ConstellationRequest(BaseModel):
     input_file: str
@@ -95,7 +100,10 @@ class PlotRequest(BaseModel):
     plot_fft: bool = True
     plot_waterfall: bool = True
     plot_time_domain: bool = False
+    time_domain_mode: str = "complex"
     plot_constellation: bool = False
+    window_type: str = "blackman-harris"
+    stride_ratio: float = 0.0
     width: int = 1024
     height: int = 512
     theme: str = "dark"
@@ -121,6 +129,7 @@ class TunerRequest(BaseModel):
     duration: float # in seconds
     file_center: float # in Hz
     quality: str = "normal"
+    oversample: int = 1
 
 class UpdateRequest(BaseModel):
     timecode: str = ""
@@ -207,8 +216,70 @@ async def run_tuner(req: TunerRequest):
             req.duration,
             req.file_center,
             req.file_center != 0.0, # file_center_provided
-            req.quality
+            req.quality,
+            req.oversample
         )
+        return {"status": "success", "output_file": req.output_file}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ResampleRequest(BaseModel):
+    input_file: str
+    output_file: str
+    new_rate: float
+    quality: str = "normal"
+
+class FilterRequest(BaseModel):
+    input_file: str
+    output_file: str
+    filter_type: str
+    cutoff1: float
+    cutoff2: float = 0.0
+    taps: int = 1023
+    center_freq: float = 0.0
+
+class WhitenRequest(BaseModel):
+    input_file: str
+    output_file: str
+    fft_size: int = 4096
+    alpha: float = 0.99
+    blank_threshold: float = 10.0
+    blank_window: int = 1024
+    output_gain: float = 0.0
+    strength: float = 0.5
+    mode: str = "compress"
+    excess_leak: float = -100.0
+
+@app.post("/api/run/resample")
+async def run_resample(req: ResampleRequest):
+    in_path = os.path.join(DATA_DIR, req.input_file)
+    out_path = os.path.join(DATA_DIR, req.output_file)
+    if not os.path.exists(in_path): raise HTTPException(status_code=404, detail="Input file not found")
+    try:
+        await asyncio.to_thread(dsp_wrapper.run_resample, in_path, out_path, req.new_rate, req.quality)
+        return {"status": "success", "output_file": req.output_file}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/run/filter")
+async def run_filter(req: FilterRequest):
+    in_path = os.path.join(DATA_DIR, req.input_file)
+    out_path = os.path.join(DATA_DIR, req.output_file)
+    if not os.path.exists(in_path): raise HTTPException(status_code=404, detail="Input file not found")
+    try:
+        await asyncio.to_thread(dsp_wrapper.run_filter, in_path, out_path, req.filter_type, req.cutoff1, req.cutoff2, req.taps, req.center_freq)
+        return {"status": "success", "output_file": req.output_file}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/run/whiten")
+async def run_whiten(req: WhitenRequest):
+    in_path = os.path.join(DATA_DIR, req.input_file)
+    out_path = os.path.join(DATA_DIR, req.output_file)
+    if not os.path.exists(in_path): raise HTTPException(status_code=404, detail="Input file not found")
+    try:
+        await asyncio.to_thread(dsp_wrapper.run_whiten, in_path, out_path, req.fft_size, req.alpha, req.blank_threshold, req.blank_window, req.output_gain, req.strength, req.mode, req.excess_leak)
         return {"status": "success", "output_file": req.output_file}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -232,7 +303,7 @@ async def run_fft(req: FFTRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"fft_{uuid.uuid4().hex[:8]}.prm"
-        logger.info(f"Generating FFT: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}")
+        logger.info(f"Generating FFT: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}, win_type={req.window_type}, stride={req.stride_ratio}")
         data, cmin, cmax = await asyncio.to_thread(
             dsp_wrapper.run_fft,
             in_path,
@@ -242,7 +313,9 @@ async def run_fft(req: FFTRequest):
             req.start_time,
             req.duration,
             req.window_size,
-            req.smoothing
+            req.smoothing,
+            req.window_type,
+            req.stride_ratio
         )
         logger.info(f"FFT computed. Middle 80% passband min={cmin:.2f} dB, peak max={cmax:.2f} dB.")
         add_to_cache(out_id, data)
@@ -267,7 +340,7 @@ async def run_psd(req: PSDRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
         
         out_id = f"psd_{uuid.uuid4().hex[:8]}.prm"
-        logger.info(f"Generating PSD: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}")
+        logger.info(f"Generating PSD: input={req.input_file}, CF={req.center_freq}, window={req.window_size}, smooth={req.smoothing}, win_type={req.window_type}, stride={req.stride_ratio}")
         data, cmin, cmax = await asyncio.to_thread(
             dsp_wrapper.run_psd,
             in_path,
@@ -277,7 +350,9 @@ async def run_psd(req: PSDRequest):
             req.start_time,
             req.duration,
             req.window_size,
-            req.smoothing
+            req.smoothing,
+            req.window_type,
+            req.stride_ratio
         )
         logger.info(f"PSD computed. Middle 80% passband min={cmin:.2f} dB, peak max={cmax:.2f} dB.")
         add_to_cache(out_id, data)
@@ -295,7 +370,7 @@ async def run_time_domain(req: TimeDomainRequest):
         out_id = f"td_{uuid.uuid4().hex[:8]}.prm"
         data = await asyncio.to_thread(
             dsp_wrapper.run_time_domain, 
-            input_path, req.start_time, req.duration, req.target_points
+            input_path, req.start_time, req.duration, req.target_points, req.mode
         )
         add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
@@ -349,9 +424,12 @@ async def run_plot(req: PlotRequest):
             req.duration,
             req.window_size,
             req.smoothing,
+            req.window_type,
+            req.stride_ratio,
             req.plot_fft,
             req.plot_waterfall, 
             req.plot_time_domain,
+            req.time_domain_mode,
             req.plot_constellation,
             req.colormap,
             req.width,

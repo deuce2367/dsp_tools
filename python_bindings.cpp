@@ -105,32 +105,50 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
             py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet", py::arg("font_path") = "");
 
+#include "dsp_operations.hpp"
+
     m.def("run_convert", [](const std::string& input_file, const std::string& output_file, 
                             const std::string& format, double rate, double freq_mhz, bool sigmf, double timecode) {
         run_convert_pipeline(input_file, output_file, format, rate, freq_mhz, sigmf, timecode);
     }, py::arg("input_file"), py::arg("output_file"), py::arg("format")="", py::arg("rate")=1.0, 
        py::arg("freq_mhz")=0.0, py::arg("sigmf")=false, py::arg("timecode")=0.0);
 
+    m.def("run_filter", [](const std::string& input_file, const std::string& output_file, 
+                           const std::string& filter_type, double cutoff1, double cutoff2, size_t taps, double center_freq) {
+        run_filter_pipeline(input_file, output_file, filter_type, cutoff1, cutoff2, taps, center_freq);
+    }, py::arg("input_file"), py::arg("output_file"), py::arg("filter_type"), py::arg("cutoff1"), 
+       py::arg("cutoff2")=0.0, py::arg("taps")=1023, py::arg("center_freq")=0.0, py::call_guard<py::gil_scoped_release>());
+
+    m.def("run_resample", [](const std::string& input_file, const std::string& output_file, 
+                             double new_rate, const std::string& quality) {
+        run_resample_pipeline(input_file, output_file, new_rate, quality);
+    }, py::arg("input_file"), py::arg("output_file"), py::arg("new_rate"), py::arg("quality")="normal", py::call_guard<py::gil_scoped_release>());
+
+    m.def("run_whiten", [](const std::string& input_file, const std::string& output_file, 
+                           size_t fft_size, double alpha, double blank_threshold, size_t blank_window, double output_gain, double strength, const std::string& mode, double excess_leak) {
+        run_whitener_pipeline(input_file, output_file, fft_size, alpha, blank_threshold, blank_window, output_gain, strength, mode, excess_leak);
+    }, py::arg("input_file"), py::arg("output_file"), py::arg("fft_size")=4096, py::arg("alpha")=0.99, py::arg("blank_threshold")=10.0, py::arg("blank_window")=1024, py::arg("output_gain")=0.0, py::arg("strength")=0.5, py::arg("mode")="compress", py::arg("excess_leak")=-100.0, py::call_guard<py::gil_scoped_release>());
+
     m.def("run_tuner_pipeline", [](const std::string& input_file, const std::string& output_file, 
                                    double center, double bandwidth, double start_time, double duration, 
-                                   double file_center, bool file_center_provided, const std::string& quality_str) {
+                                   double file_center, bool file_center_provided, const std::string& quality_str, int oversample_factor) {
         TunerQuality quality = TunerQuality::Normal;
         if (quality_str == "draft") quality = TunerQuality::Draft;
         else if (quality_str == "low") quality = TunerQuality::Low;
         else if (quality_str == "normal") quality = TunerQuality::Normal;
         else if (quality_str == "high") quality = TunerQuality::High;
         else if (quality_str == "perfect") quality = TunerQuality::Perfect;
-        run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality);
+        run_tuner_pipeline(input_file, output_file, center, bandwidth, start_time, duration, file_center, file_center_provided, quality, oversample_factor);
     }, py::arg("input_file"), py::arg("output_file"), py::arg("center"), py::arg("bandwidth"), 
        py::arg("start_time")=0.0, py::arg("duration")=0.0, py::arg("file_center")=0.0, py::arg("file_center_provided")=false, 
-       py::arg("quality_str")="normal", py::call_guard<py::gil_scoped_release>());
+       py::arg("quality_str")="normal", py::arg("oversample_factor")=1, py::call_guard<py::gil_scoped_release>());
 
     
-    m.def("run_time_domain", [](const std::string& input_file, double start_time, double duration, size_t target_points) {
-        std::vector<uint8_t> out_buffer = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_points);
+    m.def("run_time_domain", [](const std::string& input_file, double start_time, double duration, size_t target_points, const std::string& mode) {
+        std::vector<uint8_t> out_buffer = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_points, mode);
         std::string buffer(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
         return py::bytes(buffer);
-    }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::arg("mode")="complex", py::call_guard<py::gil_scoped_release>());
     
     m.def("run_constellation_data", [](const std::string& input_file, double start_time, double duration, size_t max_points) {
         std::vector<uint8_t> raw_buffer = DspTimeDomain::extract_raw_iq(input_file, start_time, duration, max_points);
@@ -150,7 +168,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     
     m.def("run_fft_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
-                                 double start_time, double duration, size_t window_size, int smoothing) {
+                                 double start_time, double duration, size_t window_size, int smoothing, const std::string& window_type, double stride_ratio) {
         DspEngine engine(window_size);
         DspEngine::StreamConfig config;
         config.filename = input_file;
@@ -160,6 +178,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing;
+        config.window_type = window_type;
+        if (stride_ratio > 0.0) config.step_size = static_cast<size_t>(window_size * stride_ratio);
         double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
         config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
         
@@ -198,11 +218,11 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         py::gil_scoped_acquire acquire;
         return py::make_tuple(py::bytes(buffer), cmin, cmax);
-    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type")="blackman-harris", py::arg("stride_ratio")=0.0, py::call_guard<py::gil_scoped_release>());
 
     m.def("run_psd_pipeline", [](const std::string& input_file, 
                                  double center_freq, double zoom_center, double zoom_bw, 
-                                 double start_time, double duration, size_t window_size, int smoothing) {
+                                 double start_time, double duration, size_t window_size, int smoothing, const std::string& window_type, double stride_ratio) {
         DspEngine engine(window_size);
         DspEngine::StreamConfig config;
         config.filename = input_file;
@@ -212,6 +232,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
+        config.window_type = window_type;
+        if (stride_ratio > 0.0) config.step_size = static_cast<size_t>(window_size * stride_ratio);
         double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
         config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
         
@@ -260,12 +282,12 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         py::gil_scoped_acquire acquire;
         return py::make_tuple(py::bytes(buffer), cmin, cmax);
-    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type")="blackman-harris", py::arg("stride_ratio")=0.0, py::call_guard<py::gil_scoped_release>());
 
     m.def("run_plot_pipeline", [](const std::string& input_file, const std::string& out_format,
                                  double center_freq, double zoom_center, double zoom_bw, 
-                                 double start_time, double duration, size_t window_size, int smoothing,
-                                 bool plot_fft, bool plot_waterfall, bool plot_time_domain, bool plot_constellation, const std::string& colormap, int width, int height,
+                                 double start_time, double duration, size_t window_size, int smoothing, const std::string& window_type, double stride_ratio,
+                                 bool plot_fft, bool plot_waterfall, bool plot_time_domain, const std::string& time_domain_mode, bool plot_constellation, const std::string& colormap, int width, int height,
                                  const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex,
                                  double zmin, double zmax) {
         DspEngine engine(width);
@@ -277,6 +299,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         config.is_wav = is_wav; config.is_blue = is_blue; config.sample_rate = sample_rate;
         config.center_freq = center_freq; config.zoom_center = zoom_center; config.zoom_bw = zoom_bw;
         config.window_size = window_size; config.time_smoothing = smoothing; config.step_size = 0;
+        config.window_type = window_type;
+        if (stride_ratio > 0.0) config.step_size = static_cast<size_t>(window_size * stride_ratio);
         double actual_start_time = (start_time == 0.0 && timecode > 0.0) ? timecode : start_time;
         config.start_time = actual_start_time; config.end_time = duration > 0 ? actual_start_time + duration : 0;
         config.output_width = width; config.output_height = height;
@@ -335,7 +359,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 15, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
         } else if (plot_time_domain) {
             size_t target_pts = 10000;
-            std::vector<uint8_t> td_buf = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_pts);
+            std::vector<uint8_t> td_buf = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_pts, time_domain_mode);
             
             BlueHeader hdr;
             std::memcpy(&hdr, td_buf.data(), sizeof(BlueHeader));
@@ -386,5 +410,5 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type"), py::arg("stride_ratio"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("time_domain_mode"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
 }

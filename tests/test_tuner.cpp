@@ -11,7 +11,7 @@ TEST_CASE("DSP Tuner", "[tuner]") {
     
     SECTION("Tuner centers signal and decimates") {
         // Tune to 1 MHz, bandwidth 1 MHz (decimate by 4)
-        run_tuner_pipeline(in_file, out_file, 1000000.0, 1000000.0, 0.0, 0.0, 0.0, false, TunerQuality::Normal);
+        run_tuner_pipeline(in_file, out_file, 1000000.0, 1000000.0, 0.0, 0.0, 0.0, false, TunerQuality::Normal, 1);
         
         auto out_data = test_utils::read_bluefile_data(out_file);
         REQUIRE(out_data.size() == 4096 * 2); // Decimated by 4
@@ -24,7 +24,7 @@ TEST_CASE("DSP Tuner", "[tuner]") {
     }
 
     SECTION("Tuner uses file center") {
-        run_tuner_pipeline(in_file, out_file, 0.0, 1000000.0, 0.0, 0.0, 1000000.0, true, TunerQuality::Draft);
+        run_tuner_pipeline(in_file, out_file, 0.0, 1000000.0, 0.0, 0.0, 1000000.0, true, TunerQuality::Draft, 1);
         auto out_data = test_utils::read_bluefile_data(out_file);
         REQUIRE(out_data.size() == 4096 * 2);
     }
