@@ -6,7 +6,7 @@
 #include <vector>
 #include <cmath>
 #include <complex>
-#include <liquid.h>
+#include <liquid/liquid.h>
 #include "bluefile_io.hpp"
 
 using namespace kfr;
@@ -65,9 +65,15 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
     // Setup Demodulator (Liquid-DSP)
     freqdem fm_demod = nullptr;
     ampmodem am_demod = nullptr;
+    float fm_deviation = 75000.0f;
 
-    if (demod_type == "FM" || demod_type == "fm") {
-        float kf = 75000.0f / actual_audio_rate;
+    if (demod_type == "WFM" || demod_type == "wfm" || demod_type == "FM" || demod_type == "fm") {
+        fm_deviation = 75000.0f;
+        float kf = fm_deviation / actual_audio_rate;
+        fm_demod = freqdem_create(kf);
+    } else if (demod_type == "NFM" || demod_type == "nfm") {
+        fm_deviation = 5000.0f;
+        float kf = fm_deviation / actual_audio_rate;
         fm_demod = freqdem_create(kf);
     } else if (demod_type == "AM" || demod_type == "am") {
         am_demod = ampmodem_create(0.5f, LIQUID_AMPMODEM_DSB, 0);
@@ -172,10 +178,10 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
                 float samp = 0.0f;
                 freqdem_demodulate(fm_demod, *(liquid_float_complex*)complex_samp, &samp);
                 
-                // Volume adjust since deviation max is ~75kHz
-                // delta_phase = 2 * pi * 75000 / actual_if_rate
+                // Volume adjust since deviation max is fm_deviation
+                // delta_phase = 2 * pi * fm_deviation / actual_if_rate
                 // So max samp should be around this delta_phase
-                float max_dev = 2.0f * M_PI * 75000.0f / actual_if_rate;
+                float max_dev = 2.0f * M_PI * fm_deviation / actual_if_rate;
                 samp = samp / max_dev; // Normalize to roughly [-1, 1]
                 
                 // Apply deemphasis filter

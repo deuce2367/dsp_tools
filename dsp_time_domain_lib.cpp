@@ -117,8 +117,21 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     std::strncpy(hdr.data_rep, "EEEI", 4);
     
     // The new xdelta is half the time per point because we output 2 samples per bucket (min and max)
+    // Read the extended header BEFORE modifying hdr fields (uses original ext_start and ext_size)
+    std::vector<uint8_t> ext_data = read_bluefile_ext_header(input_file, hdr);
+
+    // The new xdelta is half the time per point because we output 2 samples per bucket (min and max)
     hdr.xdelta = static_cast<double>(frames_per_point) / sample_rate / (output_complex ? 2.0 : 1.0);
     hdr.data_size = time_domain_out.size() * sizeof(float);
+    
+    // Setup extended header fields
+    if (!ext_data.empty()) {
+        hdr.ext_start = 512.0 + hdr.data_size; // Extended header always follows data payload in our generated file
+        hdr.ext_size = ext_data.size();
+    } else {
+        hdr.ext_start = 0;
+        hdr.ext_size = 0;
+    }
     
     // Write out bluefile
     hdr.type = 1000; // Type 1000 is for 1D generic data (used by SigPlot)
@@ -127,9 +140,15 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     write_bluefile_header_mem(out_buffer, hdr);
     
     const uint8_t* data_ptr = reinterpret_cast<const uint8_t*>(time_domain_out.data());
-    out_buffer.insert(out_buffer.end(), data_ptr, data_ptr + (time_domain_out.size() * sizeof(float)));
+    out_buffer.insert(out_buffer.end(), data_ptr, data_ptr + static_cast<size_t>(hdr.data_size));
     
-    spdlog::info("Time domain envelope successfully generated in memory");
+    // Append extended header if present
+    if (!ext_data.empty()) {
+        out_buffer.insert(out_buffer.end(), ext_data.begin(), ext_data.end());
+    }
+    
+    spdlog::info("Time domain envelope generated. Original size: {} bytes, Output size: {} bytes, Points: {}, Ext Size: {}", 
+                 hdr.data_size, out_buffer.size(), time_domain_out.size(), hdr.ext_size);
     return out_buffer;
 }
 

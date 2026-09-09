@@ -29,6 +29,7 @@ set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
     kfr
     GIT_REPOSITORY https://github.com/kfrlib/kfr.git
+    GIT_SHALLOW 1
     GIT_TAG        6.0.2
 )
 FetchContent_MakeAvailable(kfr)
@@ -37,6 +38,7 @@ FetchContent_MakeAvailable(kfr)
 FetchContent_Declare(
     cli11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_SHALLOW 1
     GIT_TAG        v2.3.2
 )
 FetchContent_MakeAvailable(cli11)
@@ -45,6 +47,7 @@ FetchContent_MakeAvailable(cli11)
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_SHALLOW 1
     GIT_TAG        v1.12.0
 )
 FetchContent_MakeAvailable(spdlog)
@@ -53,18 +56,17 @@ FetchContent_MakeAvailable(spdlog)
 FetchContent_Declare(
   stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
-  GIT_TAG        master
+  GIT_SHALLOW 1
+    GIT_TAG        master
 )
-FetchContent_GetProperties(stb)
-if(NOT stb_POPULATED)
-  FetchContent_Populate(stb)
-endif()
+FetchContent_MakeAvailable(stb)
 
 # nlohmann_json
 FetchContent_Declare(
   nlohmann_json
   GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG        v3.11.2
+  GIT_SHALLOW 1
+    GIT_TAG        v3.11.2
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -72,7 +74,8 @@ FetchContent_MakeAvailable(nlohmann_json)
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
-  GIT_TAG        v2.11.1
+  GIT_SHALLOW 1
+    GIT_TAG        v2.11.1
 )
 FetchContent_MakeAvailable(pybind11)
 
@@ -80,22 +83,19 @@ FetchContent_MakeAvailable(pybind11)
 FetchContent_Declare(
   Catch2
   GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG        v3.4.0
+  GIT_SHALLOW 1
+    GIT_TAG        v3.4.0
 )
 FetchContent_MakeAvailable(Catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 
-# Liquid-DSP
-FetchContent_Declare(
-  liquid
-  GIT_REPOSITORY https://github.com/jgaeddert/liquid-dsp.git
-  GIT_TAG        master
-)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-variable -Wno-unused-but-set-variable")
-FetchContent_MakeAvailable(liquid)
+
+
+if(DOWNLOAD_DEPS_ONLY)
+    message(STATUS "Downloaded dependencies successfully. Stopping before build targets.")
+    return()
+endif()
 
 add_executable(dsp_plotter
     main.cpp
@@ -193,7 +193,7 @@ add_executable(dsp_demod dsp_demod.cpp dsp_demod_lib.cpp dsp_tuner_lib.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_demod PUBLIC OpenMP::OpenMP_CXX)
 endif()
-target_link_libraries(dsp_demod PRIVATE kfr kfr_dft kfr_dsp kfr_io liquid-static CLI11::CLI11 spdlog::spdlog)
+target_link_libraries(dsp_demod PRIVATE kfr kfr_dft kfr_dsp kfr_io liquid CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_demod PRIVATE -Wno-stringop-overflow)
 
 # Python bindings
@@ -203,7 +203,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_link_options(dsp_plotter_py PRIVATE "-flto=auto")
 endif()
 target_compile_definitions(dsp_plotter_py PRIVATE DSP_TOOLS_PYTHON_MODULE=1)
-target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp liquid-static spdlog::spdlog)
+target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp liquid spdlog::spdlog)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_plotter_py PRIVATE OpenMP::OpenMP_CXX)
 endif()

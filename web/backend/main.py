@@ -112,8 +112,10 @@ class PlotRequest(BaseModel):
     width: int = 1024
     height: int = 512
     theme: str = "dark"
-    theme: str = "dark"
     fill_mode: str = "gradient"
+    fill_color: str = "#00FF00"
+    zmin: Optional[float] = None
+    zmax: Optional[float] = None
 
 class PlotAudioWaveformRequest(BaseModel):
     input_file: str
@@ -148,7 +150,7 @@ class DemodRequest(BaseModel):
     target_freq: float
     bandwidth: float
     audio_rate: float = 48000.0
-    demod_type: str = "FM"
+    demod_type: str = "WFM"
 
 class UpdateRequest(BaseModel):
     timecode: str = ""

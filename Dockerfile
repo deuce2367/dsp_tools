@@ -1,5 +1,5 @@
 # Build Stage 1: C++ Tools
-FROM ubuntu:22.04 AS cpp-builder
+FROM python:3.10-slim AS cpp-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -7,18 +7,21 @@ RUN apt-get update && apt-get install -y \
     git \
     python3-dev \
     libomp-dev \
+    libliquid-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY CMakeLists.txt *.hpp *.cpp *.h ./
+COPY CMakeLists.txt ./
+RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
+COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN mkdir -p build && cd build && cmake .. && make -j2
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j2
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder
 WORKDIR /app
 COPY web/frontend ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 RUN npm run build
 
 # Final Stage: Python FastAPI
@@ -26,6 +29,7 @@ FROM python:3.10-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     libgomp1 \
+    libliquid-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -209,7 +209,7 @@ function App() {
 
   const [showDemodModal, setShowDemodModal] = useState(false);
   const [demodParams, setDemodParams] = useState({center: 0, bw: 0});
-  const [demodType, setDemodType] = useState('FM');
+  const [demodType, setDemodType] = useState('WFM');
   const [demodAudioRate, setDemodAudioRate] = useState(48000);
   const [demodOutName, setDemodOutName] = useState('');
   
@@ -1142,7 +1142,7 @@ function App() {
               <label htmlFor="file-upload" style={{
                 background: 'var(--accent-color)', color: '#000', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
               }} title="Upload File">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
               </label>
             </div>
             {fileInfo && (

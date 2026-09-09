@@ -156,16 +156,25 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     
     m.def("run_constellation_data", [](const std::string& input_file, double start_time, double duration, size_t max_points) {
         std::vector<uint8_t> raw_buffer = DspTimeDomain::extract_raw_iq(input_file, start_time, duration, max_points);
-        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
-        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        BlueHeader hdr = read_bluefile_header(input_file);
+        std::vector<uint8_t> ext_data = read_bluefile_ext_header(input_file, hdr);
+        
         hdr.type = 1000; hdr.format[0] = 'C'; hdr.format[1] = 'F'; 
         hdr.timecode = start_time; hdr.data_start = 512.0; hdr.data_size = raw_buffer.size();
         hdr.xstart = 0.0; hdr.xdelta = 1.0; hdr.xunits = 1;
         
+        if (!ext_data.empty()) {
+            hdr.ext_start = 512.0 + hdr.data_size;
+            hdr.ext_size = ext_data.size();
+        } else {
+            hdr.ext_start = 0; hdr.ext_size = 0;
+        }
+        
         std::string buffer;
-        buffer.reserve(sizeof(BlueHeader) + raw_buffer.size());
+        buffer.reserve(sizeof(BlueHeader) + raw_buffer.size() + ext_data.size());
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         buffer.append(reinterpret_cast<const char*>(raw_buffer.data()), raw_buffer.size());
+        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
         
         return py::bytes(buffer);
     }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("max_points"), py::call_guard<py::gil_scoped_release>());
@@ -190,14 +199,28 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         auto result = engine.process_file_streaming(config);
         
         const std::vector<double>& out_data = result.avg_fft;
-        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
-        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        BlueHeader hdr;
+        std::vector<uint8_t> ext_data;
+        try {
+            hdr = read_bluefile_header(input_file);
+            ext_data = read_bluefile_ext_header(input_file, hdr);
+        } catch (...) {
+            std::memset(&hdr, 0, sizeof(hdr));
+            std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        }
         hdr.type = 1000; hdr.format[0] = 'S'; hdr.format[1] = 'F'; 
         hdr.timecode = result.original_start_time; hdr.data_start = 512.0; hdr.data_size = out_data.size() * sizeof(float);
         hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0); hdr.xdelta = result.actual_zoom_bw / out_data.size(); hdr.xunits = 2;
         
+        if (!ext_data.empty()) {
+            hdr.ext_start = 512.0 + hdr.data_size;
+            hdr.ext_size = ext_data.size();
+        } else {
+            hdr.ext_start = 0; hdr.ext_size = 0;
+        }
+        
         std::string buffer;
-        buffer.reserve(sizeof(BlueHeader) + out_data.size() * sizeof(float));
+        buffer.reserve(sizeof(BlueHeader) + hdr.data_size + ext_data.size());
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         
         std::vector<float> out_f(out_data.size());
@@ -219,6 +242,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         }
         
         buffer.append(reinterpret_cast<const char*>(out_f.data()), out_f.size() * sizeof(float));
+        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
         
         py::gil_scoped_acquire acquire;
         return py::make_tuple(py::bytes(buffer), cmin, cmax);
@@ -246,13 +270,27 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         if (result.spectrogram.empty()) throw std::runtime_error("No PSD data generated");
         size_t frames = result.spectrogram.size(); size_t frame_size = result.spectrogram[0].size();
         size_t total_elements = frames * frame_size;
-        BlueHeader hdr; std::memset(&hdr, 0, sizeof(hdr));
-        std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        BlueHeader hdr;
+        std::vector<uint8_t> ext_data;
+        try {
+            hdr = read_bluefile_header(input_file);
+            ext_data = read_bluefile_ext_header(input_file, hdr);
+        } catch (...) {
+            std::memset(&hdr, 0, sizeof(hdr));
+            std::strncpy(hdr.version, "BLUE", 4); std::strncpy(hdr.head_rep, "EEEI", 4); std::strncpy(hdr.data_rep, "EEEI", 4);
+        }
         hdr.type = 2000; hdr.format[0] = 'S'; hdr.format[1] = 'F'; 
         hdr.timecode = result.original_start_time; hdr.data_start = 512.0; hdr.data_size = total_elements * sizeof(float);
         hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0); hdr.xdelta = result.actual_zoom_bw / frame_size; hdr.xunits = 2;
         hdr.ystart = result.original_start_time; hdr.ydelta = static_cast<double>(result.actual_step_size) / config.sample_rate; hdr.yunits = 1;
         hdr.subsize = static_cast<int32_t>(frame_size);
+        
+        if (!ext_data.empty()) {
+            hdr.ext_start = 512.0 + hdr.data_size;
+            hdr.ext_size = ext_data.size();
+        } else {
+            hdr.ext_start = 0; hdr.ext_size = 0;
+        }
         
         std::string buffer;
         buffer.reserve(sizeof(BlueHeader) + total_elements * sizeof(float));
@@ -284,6 +322,9 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             cmin = std::max(cmin, cmax - 85.0);
         }
         
+        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        
+
         py::gil_scoped_acquire acquire;
         return py::make_tuple(py::bytes(buffer), cmin, cmax);
     }, py::arg("input_file"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type")="blackman-harris", py::arg("stride_ratio")=0.0, py::call_guard<py::gil_scoped_release>());

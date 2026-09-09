@@ -52,15 +52,21 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
              if (type === '1D') {
                  opts.ymin = parseFloat(zmin);
                  opts.ymax = parseFloat(zmax);
+                 opts.autol = 0;
+                 opts.autoh = 0;
              } else if (type === 'constellation') {
                  opts.cmode = 5;
                  opts.ymin = parseFloat(zmin);
                  opts.ymax = parseFloat(zmax);
                  opts.xmin = parseFloat(zmin);
                  opts.xmax = parseFloat(zmax);
+                 opts.autol = 0;
+                 opts.autoh = 0;
              } else {
                  opts.zmin = parseFloat(zmin);
                  opts.zmax = parseFloat(zmax);
+                 opts.autol = 0;
+                 opts.autoh = 0;
              }
              sigplotInstance.current.change_settings(opts);
           } else if (onDataLoaded && layer) {
@@ -182,9 +188,9 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       const zmaxVal = parseFloat(zmax);
       if (!isNaN(zminVal) && !isNaN(zmaxVal)) {
         if (type === '1D') {
-            sigplotInstance.current.change_settings({ymin: zminVal, ymax: zmaxVal});
+            sigplotInstance.current.change_settings({ymin: zminVal, ymax: zmaxVal, autol: 0, autoh: 0});
         } else {
-            sigplotInstance.current.change_settings({zmin: zminVal, zmax: zmaxVal});
+            sigplotInstance.current.change_settings({zmin: zminVal, zmax: zmaxVal, autol: 0, autoh: 0});
         }
       }
     }
