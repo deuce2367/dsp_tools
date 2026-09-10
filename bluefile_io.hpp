@@ -160,7 +160,8 @@ inline std::vector<uint8_t> read_bluefile_ext_header(const std::string& filename
     if (hdr.ext_size <= 0 || hdr.ext_start <= 0) return {};
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) throw std::runtime_error("Cannot open BLUE file to read ext header");
-    lseek(fd, hdr.ext_start, SEEK_SET);
+    off_t ext_offset = static_cast<off_t>(hdr.ext_start) * 512;
+    lseek(fd, ext_offset, SEEK_SET);
     std::vector<uint8_t> ext_data(hdr.ext_size);
     if (read(fd, ext_data.data(), hdr.ext_size) != hdr.ext_size) {
         close(fd);

@@ -163,18 +163,24 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         hdr.timecode = start_time; hdr.data_start = 512.0; hdr.data_size = raw_buffer.size();
         hdr.xstart = 0.0; hdr.xdelta = 1.0; hdr.xunits = 1;
         
+        size_t padding = 0;
         if (!ext_data.empty()) {
-            hdr.ext_start = 512.0 + hdr.data_size;
+            size_t current_size = 512 + static_cast<size_t>(hdr.data_size);
+            padding = (512 - (current_size % 512)) % 512;
+            hdr.ext_start = (current_size + padding) / 512;
             hdr.ext_size = ext_data.size();
         } else {
             hdr.ext_start = 0; hdr.ext_size = 0;
         }
         
         std::string buffer;
-        buffer.reserve(sizeof(BlueHeader) + raw_buffer.size() + ext_data.size());
+        buffer.reserve(sizeof(BlueHeader) + raw_buffer.size() + padding + ext_data.size());
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         buffer.append(reinterpret_cast<const char*>(raw_buffer.data()), raw_buffer.size());
-        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        if (!ext_data.empty()) {
+            if (padding > 0) buffer.append(padding, '\0');
+            buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        }
         
         return py::bytes(buffer);
     }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("max_points"), py::call_guard<py::gil_scoped_release>());
@@ -212,15 +218,18 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         hdr.timecode = result.original_start_time; hdr.data_start = 512.0; hdr.data_size = out_data.size() * sizeof(float);
         hdr.xstart = result.actual_zoom_center - (result.actual_zoom_bw / 2.0); hdr.xdelta = result.actual_zoom_bw / out_data.size(); hdr.xunits = 2;
         
+        size_t padding = 0;
         if (!ext_data.empty()) {
-            hdr.ext_start = 512.0 + hdr.data_size;
+            size_t current_size = 512 + static_cast<size_t>(hdr.data_size);
+            padding = (512 - (current_size % 512)) % 512;
+            hdr.ext_start = (current_size + padding) / 512;
             hdr.ext_size = ext_data.size();
         } else {
             hdr.ext_start = 0; hdr.ext_size = 0;
         }
         
         std::string buffer;
-        buffer.reserve(sizeof(BlueHeader) + hdr.data_size + ext_data.size());
+        buffer.reserve(sizeof(BlueHeader) + hdr.data_size + padding + ext_data.size());
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         
         std::vector<float> out_f(out_data.size());
@@ -242,7 +251,10 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         }
         
         buffer.append(reinterpret_cast<const char*>(out_f.data()), out_f.size() * sizeof(float));
-        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        if (!ext_data.empty()) {
+            if (padding > 0) buffer.append(padding, '\0');
+            buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        }
         
         py::gil_scoped_acquire acquire;
         return py::make_tuple(py::bytes(buffer), cmin, cmax);
@@ -285,15 +297,18 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         hdr.ystart = result.original_start_time; hdr.ydelta = static_cast<double>(result.actual_step_size) / config.sample_rate; hdr.yunits = 1;
         hdr.subsize = static_cast<int32_t>(frame_size);
         
+        size_t padding = 0;
         if (!ext_data.empty()) {
-            hdr.ext_start = 512.0 + hdr.data_size;
+            size_t current_size = 512 + static_cast<size_t>(hdr.data_size);
+            padding = (512 - (current_size % 512)) % 512;
+            hdr.ext_start = (current_size + padding) / 512;
             hdr.ext_size = ext_data.size();
         } else {
             hdr.ext_start = 0; hdr.ext_size = 0;
         }
         
         std::string buffer;
-        buffer.reserve(sizeof(BlueHeader) + total_elements * sizeof(float));
+        buffer.reserve(sizeof(BlueHeader) + total_elements * sizeof(float) + padding + ext_data.size());
         buffer.append(reinterpret_cast<const char*>(&hdr), sizeof(BlueHeader));
         
         double cmin = 1e9;
@@ -322,7 +337,10 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             cmin = std::max(cmin, cmax - 85.0);
         }
         
-        if (!ext_data.empty()) buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        if (!ext_data.empty()) {
+            if (padding > 0) buffer.append(padding, '\0');
+            buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
+        }
         
 
         py::gil_scoped_acquire acquire;

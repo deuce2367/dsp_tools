@@ -1287,7 +1287,7 @@ function App() {
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveTimeDomain()} disabled={loading}>Time Domain</button>
-            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveConstellation()} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Requires Complex Data (e.g., CF, CI, CB)" : ""}>Constellation</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveConstellation()} disabled={loading}>Constellation</button>
           </div>
           
           <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Static Plots</h3>
@@ -1297,7 +1297,7 @@ function App() {
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('time_domain')} disabled={loading}>Time Domain</button>
-            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('constellation')} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Requires Complex Data" : ""}>Constellation</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('constellation')} disabled={loading}>Constellation</button>
           </div>
 
 

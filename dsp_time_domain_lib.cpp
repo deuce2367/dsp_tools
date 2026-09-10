@@ -125,8 +125,11 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     hdr.data_size = time_domain_out.size() * sizeof(float);
     
     // Setup extended header fields
+    size_t padding = 0;
     if (!ext_data.empty()) {
-        hdr.ext_start = 512.0 + hdr.data_size; // Extended header always follows data payload in our generated file
+        size_t current_size = 512 + static_cast<size_t>(hdr.data_size);
+        padding = (512 - (current_size % 512)) % 512;
+        hdr.ext_start = (current_size + padding) / 512;
         hdr.ext_size = ext_data.size();
     } else {
         hdr.ext_start = 0;
@@ -144,6 +147,7 @@ std::vector<uint8_t> time_domain_data(const std::string& input_file, double star
     
     // Append extended header if present
     if (!ext_data.empty()) {
+        if (padding > 0) out_buffer.insert(out_buffer.end(), padding, 0);
         out_buffer.insert(out_buffer.end(), ext_data.begin(), ext_data.end());
     }
     
@@ -195,9 +199,6 @@ std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
     size_t data_size = file_size > data_offset ? file_size - data_offset : 0;
     
     bool is_complex = (hdr.format[0] == 'C');
-    if (!is_complex) {
-        throw std::runtime_error("extract_raw_iq requires complex input data.");
-    }
     
     size_t bytes_per_sample = is_complex ? 8 : 4; // assuming floats
     if (hdr.format[1] == 'D') bytes_per_sample = is_complex ? 16 : 8;
@@ -242,25 +243,25 @@ std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
         float i_val = 0.0f, q_val = 0.0f;
         
         if (hdr.format[1] == 'F') {
-            const float* src = reinterpret_cast<const float*>(in_data + src_idx * 8);
+            const float* src = reinterpret_cast<const float*>(in_data + src_idx * bytes_per_sample);
             i_val = src[0];
-            q_val = src[1];
+            q_val = is_complex ? src[1] : 0.0f;
         } else if (hdr.format[1] == 'D') {
-            const double* src = reinterpret_cast<const double*>(in_data + src_idx * 16);
+            const double* src = reinterpret_cast<const double*>(in_data + src_idx * bytes_per_sample);
             i_val = static_cast<float>(src[0]);
-            q_val = static_cast<float>(src[1]);
+            q_val = is_complex ? static_cast<float>(src[1]) : 0.0f;
         } else if (hdr.format[1] == 'I') {
-            const int16_t* src = reinterpret_cast<const int16_t*>(in_data + src_idx * 4);
+            const int16_t* src = reinterpret_cast<const int16_t*>(in_data + src_idx * bytes_per_sample);
             i_val = static_cast<float>(src[0]);
-            q_val = static_cast<float>(src[1]);
+            q_val = is_complex ? static_cast<float>(src[1]) : 0.0f;
         } else if (hdr.format[1] == 'B') {
-            const int8_t* src = reinterpret_cast<const int8_t*>(in_data + src_idx * 2);
+            const int8_t* src = reinterpret_cast<const int8_t*>(in_data + src_idx * bytes_per_sample);
             i_val = static_cast<float>(src[0]);
-            q_val = static_cast<float>(src[1]);
+            q_val = is_complex ? static_cast<float>(src[1]) : 0.0f;
         } else if (hdr.format[1] == 'L') {
-            const int32_t* src = reinterpret_cast<const int32_t*>(in_data + src_idx * 8);
+            const int32_t* src = reinterpret_cast<const int32_t*>(in_data + src_idx * bytes_per_sample);
             i_val = static_cast<float>(src[0]);
-            q_val = static_cast<float>(src[1]);
+            q_val = is_complex ? static_cast<float>(src[1]) : 0.0f;
         }
         
         out_ptr[i * 2] = i_val;
