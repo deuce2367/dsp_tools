@@ -233,7 +233,14 @@ if(DSP_TOOLS_COVERAGE)
     target_link_options(dsp_tests PRIVATE --coverage)
     add_custom_target(coverage
         COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-        COMMAND gcovr -r ${CMAKE_SOURCE_DIR} --cobertura coverage.xml --txt coverage.txt --exclude '.*/tests/.*' --exclude '.*/_deps/.*'
+        COMMAND gcovr -r ${CMAKE_SOURCE_DIR}
+            --cobertura coverage.xml
+            --txt coverage.txt
+            --filter "${CMAKE_SOURCE_DIR}/"
+            --exclude ".*_deps/.*"
+            --exclude ".*tests/.*"
+            --exclude ".*stb_truetype\\.h"
+            --exclude ".*embedded_font\\.h"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Running tests and generating coverage report..."
     )

@@ -151,6 +151,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
     m.def("run_time_domain", [](const std::string& input_file, double start_time, double duration, size_t target_points, const std::string& mode) {
         std::vector<uint8_t> out_buffer = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_points, mode);
         std::string buffer(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        py::gil_scoped_acquire acquire;
         return py::bytes(buffer);
     }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("target_points"), py::arg("mode")="complex", py::call_guard<py::gil_scoped_release>());
     
@@ -182,6 +183,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             buffer.append(reinterpret_cast<const char*>(ext_data.data()), ext_data.size());
         }
         
+        py::gil_scoped_acquire acquire;
         return py::bytes(buffer);
     }, py::arg("input_file"), py::arg("start_time"), py::arg("duration"), py::arg("max_points"), py::call_guard<py::gil_scoped_release>());
     
@@ -472,6 +474,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
 
         
         std::string s_buf(out_buffer.begin(), out_buffer.end());
+        py::gil_scoped_acquire acquire;
         return py::bytes(s_buf);
     }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type"), py::arg("stride_ratio"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("time_domain_mode"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
 }

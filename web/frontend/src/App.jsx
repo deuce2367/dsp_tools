@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ConstellationPlot from "./components/ConstellationPlot";
 import SigPlot from './components/SigPlot.jsx';
 import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
@@ -1341,7 +1342,11 @@ function App() {
                     <div style={{flex: 1, position: 'relative', minHeight: '200px'}}>
                       {loading && panel.url === '' && <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem'}}>Processing...</div>}
                       {panel.url ? (
-                            <SigPlot key={panel.url} dataUrl={panel.url} type={panel.subType} zmin={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmin} zmax={(panel.id === 'interactive-time-domain' || panel.subType === 'constellation') ? undefined : zmax} theme={theme} fftColor={fftColor} colormap={colormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
+                            panel.subType === 'constellation' ? (
+                                <ConstellationPlot key={panel.url} dataUrl={panel.url} theme={theme} color={fftColor} />
+                            ) : (
+                                <SigPlot key={panel.url} dataUrl={panel.url} type={panel.subType} zmin={panel.id === 'interactive-time-domain' ? undefined : zmin} zmax={panel.id === 'interactive-time-domain' ? undefined : zmax} theme={theme} fftColor={fftColor} colormap={colormap} onDataLoaded={handleDataLoaded} onZoom={handleZoom} />
+                            )
                       ) : (
                         <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
                             <p style={{margin: 0}}>Select an interactive mode to load sigplot.</p>

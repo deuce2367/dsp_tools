@@ -52,13 +52,13 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
         iq_dec_factor = std::max(1L, (int64_t)std::round(input_rate / audio_rate));
     }
     double actual_if_rate = input_rate / iq_dec_factor;
-    kfr::samplerate_converter<float> resamp_i(kfr::resample_quality::normal, 1, iq_dec_factor);
-    kfr::samplerate_converter<float> resamp_q(kfr::resample_quality::normal, 1, iq_dec_factor);
+    kfr::samplerate_converter<float> resamp_i(kfr::resample_quality::high, 1, iq_dec_factor);
+    kfr::samplerate_converter<float> resamp_q(kfr::resample_quality::high, 1, iq_dec_factor);
     
     // For audio decimation after demod (from actual_if_rate to audio_rate)
     int64_t audio_interp = 1000;
     int64_t audio_dec = std::max(1L, (int64_t)std::round(actual_if_rate / audio_rate * 1000.0));
-    kfr::samplerate_converter<float> resamp_audio(kfr::resample_quality::normal, audio_interp, audio_dec);
+    kfr::samplerate_converter<float> resamp_audio(kfr::resample_quality::high, audio_interp, audio_dec);
     double actual_audio_rate = actual_if_rate * audio_interp / audio_dec;
 
 
@@ -69,11 +69,11 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
 
     if (demod_type == "WFM" || demod_type == "wfm" || demod_type == "FM" || demod_type == "fm") {
         fm_deviation = 75000.0f;
-        float kf = fm_deviation / actual_audio_rate;
+        float kf = fm_deviation / actual_if_rate;
         fm_demod = freqdem_create(kf);
     } else if (demod_type == "NFM" || demod_type == "nfm") {
         fm_deviation = 5000.0f;
-        float kf = fm_deviation / actual_audio_rate;
+        float kf = fm_deviation / actual_if_rate;
         fm_demod = freqdem_create(kf);
     } else if (demod_type == "AM" || demod_type == "am") {
         am_demod = ampmodem_create(0.5f, LIQUID_AMPMODEM_DSB, 0);
@@ -181,7 +181,7 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
                 // Volume adjust since deviation max is fm_deviation
                 // delta_phase = 2 * pi * fm_deviation / actual_if_rate
                 // So max samp should be around this delta_phase
-                float max_dev = 2.0f * M_PI * fm_deviation / actual_if_rate;
+                float max_dev = 2.0f * M_PI;
                 samp = samp / max_dev; // Normalize to roughly [-1, 1]
                 
                 // Apply deemphasis filter

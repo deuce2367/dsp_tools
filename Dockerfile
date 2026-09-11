@@ -35,29 +35,35 @@ RUN apt-get update && apt-get install -y \
     libliquid-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user and group
+ARG UID=1000
+ARG GID=1000
+RUN groupadd -g ${GID} tools \
+    && useradd -u ${UID} -g tools -m -s /bin/bash dsp
+
 WORKDIR /app
 
 # Copy C++ binaries
-COPY --from=cpp-builder /app/build/dsp_plotter /app/build/dsp_plotter
-COPY --from=cpp-builder /app/build/dsp_fft /app/build/dsp_fft
-COPY --from=cpp-builder /app/build/dsp_psd /app/build/dsp_psd
-COPY --from=cpp-builder /app/build/dsp_filter /app/build/dsp_filter
-COPY --from=cpp-builder /app/build/dsp_tuner /app/build/dsp_tuner
-COPY --from=cpp-builder /app/build/dsp_resample /app/build/dsp_resample
-COPY --from=cpp-builder /app/build/dsp_whitener /app/build/dsp_whitener
-COPY --from=cpp-builder /app/build/dsp_format /app/build/dsp_format
-COPY --from=cpp-builder /app/build/dsp_convert /app/build/dsp_convert
-COPY --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_plotter /app/build/dsp_plotter
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_fft /app/build/dsp_fft
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_psd /app/build/dsp_psd
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_filter /app/build/dsp_filter
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_tuner /app/build/dsp_tuner
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_resample /app/build/dsp_resample
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_whitener /app/build/dsp_whitener
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_format /app/build/dsp_format
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_convert /app/build/dsp_convert
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
 # Copy frontend static build
-COPY --from=node-builder /app/dist /app/web/frontend/dist
+COPY --chown=dsp:tools --from=node-builder /app/dist /app/web/frontend/dist
 
 # Copy coverage reports
-RUN mkdir -p /app/coverage
-COPY --from=cpp-builder /app/build/coverage.xml /app/coverage/
-COPY --from=cpp-builder /app/build/coverage.txt /app/coverage/
+RUN mkdir -p /app/coverage && chown -R dsp:tools /app/coverage
+COPY --chown=dsp:tools --from=cpp-builder /app/build/coverage.xml /app/coverage/
+COPY --chown=dsp:tools --from=cpp-builder /app/build/coverage.txt /app/coverage/
 
 # Copy backend Python code
-COPY web/backend /app/web/backend
+COPY --chown=dsp:tools web/backend /app/web/backend
 
 # Install Python requirements
 WORKDIR /app/web/backend
@@ -72,7 +78,12 @@ ENV DSP_BIN_DIR="/app/build"
 ENV DSP_DATA_DIR="/app/data"
 
 # Ensure data dir exists
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R dsp:tools /app/data
+
+# Switch to non-root user
+USER dsp
+COPY --chown=dsp:tools .bash_prompt /home/dsp/.bash_prompt
+RUN echo "if [ -f ~/.bash_prompt ]; then source ~/.bash_prompt; fi" >> /home/dsp/.bashrc
 
 # Run uvicorn
 EXPOSE 8000

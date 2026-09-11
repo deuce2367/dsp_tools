@@ -1,0 +1,17 @@
+# Enable 256 colors if terminal supports it
+export TERM=xterm-256color
+
+# ASCII Art Greeting
+echo -e "\e[38;5;46m    ____  _____ ____    \e[38;5;40m ______            __    "
+echo -e "\e[38;5;46m   / __ \/ ___// __ \   \e[38;5;40m/_  __/___  ____  / /____"
+echo -e "\e[38;5;40m  / / / /\__ \/ /_/ /    \e[38;5;34m/ / / __ \/ __ \/ / ___/"
+echo -e "\e[38;5;34m / /_/ /___/ / ____/    \e[38;5;28m/ / / /_/ / /_/ / (__  ) "
+echo -e "\e[38;5;28m/_____//____/_/        \e[38;5;22m/_/  \____/\____/_/____/  \e[0m"
+echo ""
+echo -e "\e[38;5;118mWelcome to the DSP Tools Docker Environment!\e[0m"
+echo ""
+
+# Custom prompt with subtle green shades (color on color)
+# Backgrounds: 22 (dark), 28 (lighter)
+# Foregrounds: 193 (pale green), 154 (vibrant green)
+PS1="\[\e[48;5;22;38;5;193m\] \u@\h \[\e[48;5;28;38;5;154m\] \w \[\e[0m\e[38;5;118m\] \$ \[\e[0m\]"

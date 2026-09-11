@@ -270,7 +270,7 @@ std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
         
         double mag = std::sqrt(i_val * i_val + q_val * q_val);
         if (mag > 1e-6) {
-            double error = target_mag - mag * agc_gain;
+            double error = (target_mag / mag) - agc_gain;
             agc_gain += alpha * error;
             out_ptr[i * 2] = static_cast<float>(i_val * agc_gain);
             out_ptr[i * 2 + 1] = static_cast<float>(q_val * agc_gain);

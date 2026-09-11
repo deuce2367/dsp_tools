@@ -33,21 +33,36 @@ const ConstellationPlot = ({ dataUrl, theme = 'dark', color = '#00ff00', zmin, z
         
         const arrayBuffer = await res.arrayBuffer();
         if (isMounted) {
-          const floats = new Float32Array(arrayBuffer);
-          setIqData(floats);
-          setError(null);
+          const headerView = new DataView(arrayBuffer);
+          const dataStart = headerView.getFloat64(32, true);
+          const dataSize = headerView.getFloat64(40, true);
+          const numFloats = dataSize / 4;
           
-          // Auto-scale if bounds are not strictly provided
-          if (zmin === '' || zmin === undefined || zmax === '' || zmax === undefined) {
-            let actualMin = Number.MAX_VALUE;
-            let actualMax = -Number.MAX_VALUE;
-            for (let i = 0; i < floats.length; i++) {
-              if (floats[i] < actualMin) actualMin = floats[i];
-              if (floats[i] > actualMax) actualMax = floats[i];
-            }
-            if (actualMin > actualMax) { actualMin = -1; actualMax = 1; }
-            setXBounds({ min: actualMin, max: actualMax });
-            setYBounds({ min: actualMin, max: actualMax });
+          if (dataStart >= 0 && dataStart + dataSize <= arrayBuffer.byteLength) {
+              const floats = new Float32Array(arrayBuffer, dataStart, numFloats);
+              setIqData(floats);
+              setError(null);
+              
+              // Auto-scale if bounds are not strictly provided
+              if (zmin === '' || zmin === undefined || zmax === '' || zmax === undefined) {
+                let actualMin = Number.MAX_VALUE;
+                let actualMax = -Number.MAX_VALUE;
+                for (let i = 0; i < floats.length; i++) {
+                  if (floats[i] < actualMin) actualMin = floats[i];
+                  if (floats[i] > actualMax) actualMax = floats[i];
+                }
+                if (actualMin > actualMax) { actualMin = -1; actualMax = 1; }
+                
+                // Add a small 10% margin
+                const margin = (actualMax - actualMin) * 0.1;
+                actualMin -= margin;
+                actualMax += margin;
+                
+                setXBounds({ min: actualMin, max: actualMax });
+                setYBounds({ min: actualMin, max: actualMax });
+              }
+          } else {
+              throw new Error("Invalid bluefile header");
           }
         }
       } catch (err) {
@@ -80,6 +95,8 @@ const ConstellationPlot = ({ dataUrl, theme = 'dark', color = '#00ff00', zmin, z
     const xRange = xBounds.max - xBounds.min;
     const yRange = yBounds.max - yBounds.min;
     
+    if (xRange <= 0 || yRange <= 0) return;
+    
     // Map a value to pixel coordinate
     const toX = (val) => ((val - xBounds.min) / xRange) * width;
     const toY = (val) => height - ((val - yBounds.min) / yRange) * height;
@@ -99,7 +116,6 @@ const ConstellationPlot = ({ dataUrl, theme = 'dark', color = '#00ff00', zmin, z
     ctx.fillStyle = color;
     
     const numPoints = iqData.length / 2;
-    let drawnPoints = 0;
     for (let i = 0; i < numPoints; i++) {
       const iVal = iqData[i * 2];
       const qVal = iqData[i * 2 + 1];
@@ -114,17 +130,7 @@ const ConstellationPlot = ({ dataUrl, theme = 'dark', color = '#00ff00', zmin, z
       
       // Draw 2x2 rect for the dot
       ctx.fillRect(px - 1, py - 1, 2, 2);
-      drawnPoints++;
     }
-    
-    // DEBUG TEXT OVERLAY
-    ctx.fillStyle = 'red';
-    ctx.font = '16px monospace';
-    ctx.fillText(`Points: ${numPoints}, Drawn: ${drawnPoints}`, 10, 20);
-    ctx.fillText(`BoundsX: [${xBounds.min.toFixed(2)}, ${xBounds.max.toFixed(2)}]`, 10, 40);
-    ctx.fillText(`BoundsY: [${yBounds.min.toFixed(2)}, ${yBounds.max.toFixed(2)}]`, 10, 60);
-    ctx.fillText(`Canvas: ${width}x${height}`, 10, 80);
-    
   };
 
   useEffect(() => {
@@ -188,7 +194,6 @@ const ConstellationPlot = ({ dataUrl, theme = 'dark', color = '#00ff00', zmin, z
     const dataDy = (dy / canvas.height) * yRange;
     
     setXBounds(prev => ({ min: prev.min - dataDx, max: prev.max - dataDx }));
-    // Dragging mouse down (positive dy) means panning view UP, so Y data shifts up
     setYBounds(prev => ({ min: prev.min + dataDy, max: prev.max + dataDy }));
   };
 
