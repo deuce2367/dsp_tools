@@ -16,7 +16,7 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j${JOBS}
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j1
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder
@@ -54,7 +54,11 @@ COPY web/backend /app/web/backend
 
 # Install Python requirements
 WORKDIR /app/web/backend
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y build-essential \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get remove -y build-essential \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set env vars for data and bin paths
 ENV DSP_BIN_DIR="/app/build"
