@@ -1,5 +1,6 @@
 # Build Stage 1: C++ Tools
-FROM python:3.10-slim AS cpp-builder
+ARG JOBS=4
+FROM python:3.13-slim AS cpp-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -15,7 +16,7 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j${JOBS}
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder
@@ -25,7 +26,7 @@ RUN npm install --no-audit --no-fund
 RUN npm run build
 
 # Final Stage: Python FastAPI
-FROM python:3.10-slim
+FROM python:3.13-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     libgomp1 \
