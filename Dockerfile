@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libomp-dev \
     libliquid-dev \
+    gcovr \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,7 +17,8 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j1
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF -DDSP_TOOLS_COVERAGE=ON .. && make -j1
+RUN cd build && make coverage
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder
@@ -48,6 +50,11 @@ COPY --from=cpp-builder /app/build/dsp_convert /app/build/dsp_convert
 COPY --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
 # Copy frontend static build
 COPY --from=node-builder /app/dist /app/web/frontend/dist
+
+# Copy coverage reports
+RUN mkdir -p /app/coverage
+COPY --from=cpp-builder /app/build/coverage.xml /app/coverage/
+COPY --from=cpp-builder /app/build/coverage.txt /app/coverage/
 
 # Copy backend Python code
 COPY web/backend /app/web/backend
