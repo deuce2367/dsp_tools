@@ -1,5 +1,5 @@
 # Build Stage 1: C++ Tools
-ARG JOBS=4
+ARG JOBS=1
 FROM python:3.13-slim AS cpp-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
