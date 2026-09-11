@@ -127,9 +127,7 @@ void format_data(const std::string& input_file, const std::string& output_file,
     }
     
     std::vector<uint8_t> ext_data = read_bluefile_ext_header(input_file, hdr);
-    if (!ext_data.empty()) {
-        hdr.ext_start = static_cast<int32_t>(hdr.data_start + hdr.data_size);
-    }
+    prepare_bluefile_ext_header(hdr, ext_data);
     
     write_bluefile_header(output_file, hdr);
     int out_fd = open(output_file.c_str(), O_WRONLY | O_APPEND);
@@ -261,7 +259,7 @@ void format_data(const std::string& input_file, const std::string& output_file,
     }
     
     close(out_fd);
-    write_bluefile_ext_header(output_file, ext_data);
+    write_bluefile_ext_header(output_file, hdr, ext_data);
     spdlog::info("Formatting complete.");
 }
 

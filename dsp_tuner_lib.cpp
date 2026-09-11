@@ -135,9 +135,7 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     
     size_t out_samples_per_frame = 2;
     hdr.data_size = out_num_frames * out_samples_per_frame * sizeof(T);
-    if (!ext_data.empty()) {
-        hdr.ext_start = static_cast<int32_t>(hdr.data_start + hdr.data_size);
-    }
+    prepare_bluefile_ext_header(hdr, ext_data);
     
     spdlog::info("Resampler delay:     {} samples ({} sec)", resampler_i.get_delay(), delay_sec);
     spdlog::info("Output frames:       {}", out_num_frames);
@@ -297,7 +295,7 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     }
     close(out_fd);
     
-    write_bluefile_ext_header(output_file, ext_data);
+    write_bluefile_ext_header(output_file, hdr, ext_data);
     
     auto exec_end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = exec_end_time - exec_start_time;

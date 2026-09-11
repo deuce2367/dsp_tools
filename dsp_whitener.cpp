@@ -303,7 +303,7 @@ void process_whitener(const std::string& input_file, const std::string& output_f
     }
     
     close(out_fd);
-    write_bluefile_ext_header(output_file, ext_data);
+    write_bluefile_ext_header(output_file, hdr, ext_data);
     
     spdlog::info("Whitening complete. Blanked {} pulse samples.", blank_count);
     

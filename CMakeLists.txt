@@ -214,6 +214,7 @@ target_include_directories(dsp_plotter_py PRIVATE ${stb_SOURCE_DIR})
 enable_testing()
 add_executable(dsp_tests
     tests/test_main.cpp
+    tests/test_bluefile_io.cpp
     tests/test_whitener.cpp
     tests/test_filter.cpp
     tests/test_tuner.cpp

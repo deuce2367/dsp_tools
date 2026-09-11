@@ -159,25 +159,49 @@ inline void update_bluefile_header(const std::string& filename, double timecode,
 inline std::vector<uint8_t> read_bluefile_ext_header(const std::string& filename, const BlueHeader& hdr) {
     if (hdr.ext_size <= 0 || hdr.ext_start <= 0) return {};
     int fd = open(filename.c_str(), O_RDONLY);
-    if (fd < 0) throw std::runtime_error("Cannot open BLUE file to read ext header");
+    if (fd < 0) throw std::runtime_error("Cannot open BLUE file to read ext header: " + filename);
     off_t ext_offset = static_cast<off_t>(hdr.ext_start) * 512;
     lseek(fd, ext_offset, SEEK_SET);
     std::vector<uint8_t> ext_data(hdr.ext_size);
-    if (read(fd, ext_data.data(), hdr.ext_size) != hdr.ext_size) {
+    ssize_t read_bytes = read(fd, ext_data.data(), hdr.ext_size);
+    if (read_bytes != hdr.ext_size) {
         close(fd);
-        throw std::runtime_error("Failed to read complete extended header");
+        throw std::runtime_error("Failed to read complete extended header in " + filename + ". Expected " + std::to_string(hdr.ext_size) + " bytes at offset " + std::to_string(ext_offset) + ", but got " + std::to_string(read_bytes) + " bytes.");
     }
     close(fd);
     return ext_data;
 }
 
-inline void write_bluefile_ext_header(const std::string& filename, const std::vector<uint8_t>& ext_data) {
+inline void prepare_bluefile_ext_header(BlueHeader& hdr, const std::vector<uint8_t>& ext_data) {
+    if (ext_data.empty()) {
+        hdr.ext_start = 0;
+        hdr.ext_size = 0;
+        return;
+    }
+    size_t current_size = static_cast<size_t>(hdr.data_start + hdr.data_size);
+    size_t padding = (512 - (current_size % 512)) % 512;
+    hdr.ext_start = static_cast<int32_t>((current_size + padding) / 512);
+    hdr.ext_size = static_cast<int32_t>(ext_data.size());
+}
+
+inline void write_bluefile_ext_header(const std::string& filename, const BlueHeader& hdr, const std::vector<uint8_t>& ext_data) {
     if (ext_data.empty()) return;
     int fd = open(filename.c_str(), O_WRONLY | O_APPEND);
-    if (fd < 0) throw std::runtime_error("Cannot open output file to append ext header");
+    if (fd < 0) throw std::runtime_error("Cannot open output file '" + filename + "' to append ext header");
+    
+    size_t current_size = static_cast<size_t>(hdr.data_start + hdr.data_size);
+    size_t padding = (512 - (current_size % 512)) % 512;
+    if (padding > 0) {
+        std::vector<uint8_t> pad_bytes(padding, 0);
+        if (write(fd, pad_bytes.data(), padding) != static_cast<ssize_t>(padding)) {
+            close(fd);
+            throw std::runtime_error("Failed to write padding for extended header in " + filename);
+        }
+    }
+    
     if (write(fd, ext_data.data(), ext_data.size()) != static_cast<ssize_t>(ext_data.size())) {
         close(fd);
-        throw std::runtime_error("Failed to write extended header");
+        throw std::runtime_error("Failed to write extended header in " + filename);
     }
     close(fd);
 }

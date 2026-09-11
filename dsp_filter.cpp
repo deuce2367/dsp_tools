@@ -252,7 +252,7 @@ void filter_data(const std::string& input_file, const std::string& output_file, 
     
     close(out_fd);
     
-    write_bluefile_ext_header(output_file, ext_data);
+    write_bluefile_ext_header(output_file, hdr, ext_data);
     
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = end_time - start_time;
