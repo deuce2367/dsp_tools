@@ -54,6 +54,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
                  opts.ymax = parseFloat(zmax);
                  opts.autol = 0;
                  opts.autoh = 0;
+                 opts.autoy = 0;
              } else if (type === 'constellation') {
                  opts.cmode = 5;
                  opts.ymin = parseFloat(zmin);
@@ -188,7 +189,7 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
       const zmaxVal = parseFloat(zmax);
       if (!isNaN(zminVal) && !isNaN(zmaxVal)) {
         if (type === '1D') {
-            sigplotInstance.current.change_settings({ymin: zminVal, ymax: zmaxVal, autol: 0, autoh: 0});
+            sigplotInstance.current.change_settings({ymin: zminVal, ymax: zmaxVal, autol: 0, autoh: 0, autoy: 0});
         } else {
             sigplotInstance.current.change_settings({zmin: zminVal, zmax: zmaxVal, autol: 0, autoh: 0});
         }

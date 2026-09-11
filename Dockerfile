@@ -17,7 +17,7 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF -DDSP_TOOLS_COVERAGE=ON .. && make -j1
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF -DDSP_TOOLS_COVERAGE=ON .. && make -j${JOBS}
 RUN cd build && make coverage
 
 # Build Stage 2: Node Frontend
