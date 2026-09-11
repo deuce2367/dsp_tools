@@ -15,7 +15,7 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
-RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j2
+RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF .. && make -j
 
 # Build Stage 2: Node Frontend
 FROM node:18 AS node-builder

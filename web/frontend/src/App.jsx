@@ -157,7 +157,7 @@ function App() {
   const [file, setFile] = useState('timecode.prm');
   const [availableFiles, setAvailableFiles] = useState([]);
   const [centerFreq, setCenterFreq] = useState(0);
-  const [windowSize, setWindowSize] = useState('auto');
+  const [windowSize, setWindowSize] = useState('1024');
   const [smoothing, setSmoothing] = useState(8);
   const [displaySmoothing, setDisplaySmoothing] = useState(8);
   const [colormap, setColormap] = useState('jet');
