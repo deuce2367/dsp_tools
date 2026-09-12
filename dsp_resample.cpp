@@ -216,6 +216,10 @@ int main(int argc, char** argv) {
     app.add_option("-I,--interpolation", interp_factor, "Manual interpolation factor (multiplier)");
     app.add_option("-d,--decimation", dec_factor, "Manual decimation factor (divisor)");
     app.add_option("-q,--quality", quality_str, "Resampling Filter Quality (draft, low, normal, high, perfect)");
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
     
     CLI11_PARSE(app, argc, argv);
     

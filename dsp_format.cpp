@@ -300,6 +300,10 @@ int main(int argc, char** argv) {
     app.add_option("--extract", extract_str, "Extraction for Complex -> Real (i, q, mag, phase, unpack). Default: i");
     app.add_option("--cast", cast_str, "Target data type character (B, I, L, F, D). Default: Keep same as input.");
     app.add_option("--taps", taps, "Number of FIR taps for Hilbert transform (must be odd, default: 127)");
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
     
     CLI11_PARSE(app, argc, argv);
     

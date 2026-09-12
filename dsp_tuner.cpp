@@ -46,7 +46,11 @@ int main(int argc, char** argv) {
     
     int oversample = 1;
     app.add_option("-s,--oversample", oversample, "Oversample factor (1, 2, 4, 8) to use before decimation (default: 1)");
-
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
+    
     CLI11_PARSE(app, argc, argv);
     
     if (opt_fc->count() > 0) {

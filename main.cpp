@@ -109,7 +109,11 @@ int main(int argc, char** argv) {
     app.add_option("--box-center-freq", box_center_freq, "Center frequency in MHz for highlight box (overlay)");
     app.add_option("--box-bw", box_bw, "Bandwidth in MHz for highlight box (overlay)");
     app.add_option("--box-color", box_color, "Color for highlight box: red, green, blue, yellow, white, cyan, magenta, black (default: white)");
-
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
+    
     CLI11_PARSE(app, argc, argv);
 
     spdlog::info("====================================");

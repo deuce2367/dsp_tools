@@ -353,6 +353,10 @@ int main(int argc, char** argv) {
     app.add_option("--mode", mode, "Whitening mode: compress (default) or griffiths")->check(CLI::IsMember({"compress", "griffiths"}));
     app.add_option("--strength", strength, "Whitening strength from 0.0 to 1.0 (only used in compress mode). (default: 0.5)");
     app.add_option("--excess_leak", excess_leak, "Amount in dB to increase the calculated leak value (only used in griffiths mode). (default: -100.0)");
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
     
     CLI11_PARSE(app, argc, argv);
     

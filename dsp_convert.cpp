@@ -22,6 +22,10 @@ int main(int argc, char** argv) {
     app.add_option("--freq", freq_mhz, "Center frequency in MHz (default: 0.0)");
     app.add_option("--timecode", timecode, "Start time (J1950 seconds) (default: 0.0)");
     app.add_flag("--sigmf", sigmf, "Generate a sidecar .sigmf-meta JSON file");
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
     
     CLI11_PARSE(app, argc, argv);
     

@@ -34,7 +34,11 @@ int main(int argc, char** argv) {
     app.add_option("--step-size", step_size, "Step size in samples between FFT frames (default: auto)");
     app.add_option("-s,--start", start_time, "Start time (seconds)");
     app.add_option("-d,--duration", duration, "Duration to process (seconds)");
-
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
+    
     CLI11_PARSE(app, argc, argv);
 
     try {

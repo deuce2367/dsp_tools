@@ -34,7 +34,11 @@ int main(int argc, char** argv) {
     app.add_option("-s,--start", start_time, "Start time (seconds)");
     app.add_option("-d,--duration", duration, "Duration to process (seconds)");
     app.add_option("-m,--mode", mode, "FFT mode ('avg' or 'max') (default: avg)")->check(CLI::IsMember({"avg", "max"}));
-
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
+    
     CLI11_PARSE(app, argc, argv);
 
     try {

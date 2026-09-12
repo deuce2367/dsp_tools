@@ -19,7 +19,11 @@ int main(int argc, char** argv) {
 
     size_t target_points = 10000;
     app.add_option("-p,--points", target_points, "Target number of points for output envelope");
-
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
+    
     CLI11_PARSE(app, argc, argv);
 
     try {

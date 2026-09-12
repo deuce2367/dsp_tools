@@ -294,6 +294,10 @@ int main(int argc, char** argv) {
     app.add_option("--cutoff2", cutoff2, "Cutoff Frequency 2 (Hz) (required for bandpass and bandstop filters)");
     app.add_option("--center_freq", center_freq, "Center Frequency of the file (Hz)");
     app.add_option("--taps", taps, "Number of FIR taps (must be odd for Type I linear phase filters). Default is 1023.");
+    if (argc == 1) {
+        std::cout << app.help() << std::endl;
+        return 0;
+    }
     
     CLI11_PARSE(app, argc, argv);
     
