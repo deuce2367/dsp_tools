@@ -1,5 +1,5 @@
 # Build Stage 1: C++ Tools
-ARG JOBS=1
+ARG JOBS=5
 FROM python:3.13-slim AS cpp-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -17,6 +17,7 @@ COPY CMakeLists.txt ./
 RUN mkdir -p build && cd build && cmake -DDOWNLOAD_DEPS_ONLY=ON ..
 COPY *.hpp *.cpp *.h ./
 COPY tests ./tests/
+RUN echo ${JOBS}
 RUN cd build && cmake -DDOWNLOAD_DEPS_ONLY=OFF -DDSP_TOOLS_COVERAGE=ON .. && make -j${JOBS}
 RUN cd build && make coverage
 
@@ -76,6 +77,7 @@ RUN apt-get update && apt-get install -y build-essential \
 # Set env vars for data and bin paths
 ENV DSP_BIN_DIR="/app/build"
 ENV DSP_DATA_DIR="/app/data"
+ENV PATH ${PATH}:${DSP_BIN_DIR}
 
 # Ensure data dir exists
 RUN mkdir -p /app/data && chown -R dsp:tools /app/data
