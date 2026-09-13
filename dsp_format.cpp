@@ -286,7 +286,7 @@ int main(int argc, char** argv) {
     bool to_complex = false;
     bool to_real = false;
     std::string method_str = "pad";
-    std::string extract_str = "i";
+    std::string extract_str = "unpack";
     std::string cast_str = "";
     size_t taps = 127;
     
@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
     app.add_flag("--to-real", to_real, "Convert Complex input to Real output");
     
     app.add_option("--method", method_str, "Method for Real -> Complex (pad, hilbert, pack). Default: pad");
-    app.add_option("--extract", extract_str, "Extraction for Complex -> Real (i, q, mag, phase, unpack). Default: i");
+    app.add_option("--extract", extract_str, "Extraction for Complex -> Real (i, q, mag, phase, unpack). Default: unpack");
     app.add_option("--cast", cast_str, "Target data type character (B, I, L, F, D). Default: Keep same as input.");
     app.add_option("--taps", taps, "Number of FIR taps for Hilbert transform (must be odd, default: 127)");
     if (argc == 1) {

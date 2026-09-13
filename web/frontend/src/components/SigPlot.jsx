@@ -170,9 +170,10 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
             if (Gx && Gx.lyr) {
                 for (let i = 0; i < Gx.lyr.length; i++) {
                     if (Gx.lyr[i]) {
-                        Gx.lyr[i].color = fftColor;
+                        Gx.lyr[i].color = fftColor; Gx.lyr[i].line_color = fftColor; Gx.lyr[i].fill_color = fftColor;
                     }
                 }
+                plot.change_settings({color: fftColor});
                 plot.refresh();
             } else {
                 plot.change_settings({ color: fftColor });
