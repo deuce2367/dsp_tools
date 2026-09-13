@@ -211,7 +211,7 @@ function App() {
   const [showDemodModal, setShowDemodModal] = useState(false);
   const [demodParams, setDemodParams] = useState({center: 0, bw: 0});
   const [demodType, setDemodType] = useState('WFM');
-  const [demodAudioRate, setDemodAudioRate] = useState(48000);
+  const [demodAudioRate, setDemodAudioRate] = useState(192000);
   const [demodOutName, setDemodOutName] = useState('');
   
   const [demodAudioUrl, setDemodAudioUrl] = useState(null);
@@ -781,7 +781,7 @@ function App() {
   const openDemod = () => {
     if (!fileInfo) return alert("No file selected.");
     let proposed = file.replace('.prm', '') + '_demod.wav';
-    setDemodParams({center: centerFreq, bw: 0.1}); // Default 100kHz
+    setDemodParams({center: centerFreq, bw: 0.2}); // Default 200kHz
     setDemodOutName(proposed);
     setShowDemodModal(true);
   };
