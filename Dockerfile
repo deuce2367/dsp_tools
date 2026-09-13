@@ -54,6 +54,7 @@ COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_resample /app/build/dsp
 COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_whitener /app/build/dsp_whitener
 COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_format /app/build/dsp_format
 COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_convert /app/build/dsp_convert
+COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_demod /app/build/dsp_demod
 COPY --chown=dsp:tools --from=cpp-builder /app/build/dsp_plotter_py*.so /app/build/
 # Copy frontend static build
 COPY --chown=dsp:tools --from=node-builder /app/dist /app/web/frontend/dist
