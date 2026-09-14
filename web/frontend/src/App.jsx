@@ -1176,10 +1176,10 @@ function App() {
                     )}
                   </div>
 
-                  <div style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '20px', marginBottom: '5px'}}>
+                  <div style={{display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginBottom: '5px', width: '100%'}}>
                     
-                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', flex: 2}}>
-                      <span style={{color: 'var(--text-color)', opacity: 0.7, whiteSpace: 'nowrap'}}>Start Time:</span>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                      <span style={{color: 'var(--text-color)', opacity: 0.7, whiteSpace: 'nowrap', minWidth: '85px'}}>Start Time:</span>
                       {isEditingInfo ? (
                         <div style={{flex: 1, display: 'flex', alignItems: 'center', gap: '5px'}}>
                           <div style={{position: 'relative', width: '24px', height: '24px', flexShrink: 0}}>
@@ -1202,11 +1202,11 @@ function App() {
                       )}
                     </div>
                     
-                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '150px'}}>
-                      <span style={{color: 'var(--text-color)', opacity: 0.7, whiteSpace: 'nowrap'}}>Freq (MHz):</span>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                      <span style={{color: 'var(--text-color)', opacity: 0.7, whiteSpace: 'nowrap', minWidth: '85px'}}>Freq (MHz):</span>
                       {isEditingInfo ? (
                         <div style={{flex: 1}}>
-                          <input type="text" value={editFreq} onChange={e => setEditFreq(e.target.value)} style={{width: '100%', padding: '2px', fontSize: '0.8rem', boxSizing: 'border-box'}} />
+                          <input type="text" value={editFreq} onChange={e => setEditFreq(e.target.value)} style={{width: '100%', padding: '4px', fontSize: '0.8rem', boxSizing: 'border-box'}} />
                         </div>
                       ) : (
                         <span style={{fontWeight: 'bold', flex: 1}}>{fileInfo.center_freq}</span>
@@ -1244,7 +1244,7 @@ function App() {
                 disabled={!zoomBounds} 
                 onClick={openTuner}
                 style={{ margin: 0, opacity: zoomBounds ? 1 : 0.5, cursor: zoomBounds ? 'pointer' : 'not-allowed' }}>
-                Tuner (DDC)
+                Sub-Band Tuner (SBT)
               </button>
               <button onClick={() => { setFilterOutName(`${file.split('.')[0]}_filtered.prm`); setShowFilterModal(true); }} style={{margin: 0}} disabled={!fileInfo}>Filter</button>
               <button onClick={() => { setResampleOutName(`${file.split('.')[0]}_resampled.prm`); setShowResampleModal(true); }} style={{margin: 0}} disabled={!fileInfo}>Resample</button>

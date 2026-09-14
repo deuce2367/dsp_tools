@@ -59,6 +59,9 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     num_frames = frames_to_process;
     
     double shift_freq = file_center - center;
+    if (!is_complex) {
+        shift_freq -= (sample_rate / 4.0);
+    }
     
     // Automatic optimal sample rate using integer decimation
     int64_t dec_factor = static_cast<int64_t>(std::floor(sample_rate / bandwidth));
@@ -135,6 +138,7 @@ void tune_data(const std::string& input_file, const std::string& output_file, do
     
     size_t out_samples_per_frame = 2;
     hdr.data_size = out_num_frames * out_samples_per_frame * sizeof(T);
+    set_blueheader_center_freq(hdr, center / 1e6);
     prepare_bluefile_ext_header(hdr, ext_data);
     
     spdlog::info("Resampler delay:     {} samples ({} sec)", resampler_i.get_delay(), delay_sec);

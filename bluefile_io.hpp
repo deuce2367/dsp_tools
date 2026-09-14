@@ -113,6 +113,27 @@ inline BlueHeader read_bluefile_header(const std::string& filename) {
     return hdr;
 }
 
+
+inline void set_blueheader_center_freq(BlueHeader& hdr, double center_freq) {
+    std::string keyword_str(hdr.keywords, strnlen(hdr.keywords, sizeof(hdr.keywords)));
+    size_t rf_pos = keyword_str.find("RF_FREQUENCY_MHZ=");
+    if (rf_pos != std::string::npos) {
+        size_t val_start = rf_pos + 17;
+        size_t val_end = keyword_str.find_first_of(";\n ", val_start);
+        if (val_end == std::string::npos) val_end = keyword_str.length();
+        keyword_str.erase(rf_pos, val_end - rf_pos);
+    }
+    if (center_freq > 0.0) { 
+        if (!keyword_str.empty() && keyword_str.back() != '\n') keyword_str += "\n";
+        keyword_str += "RF_FREQUENCY_MHZ=" + std::to_string(center_freq) + "\n";
+    }
+    if (keyword_str.length() >= sizeof(hdr.keywords)) {
+        keyword_str = keyword_str.substr(0, sizeof(hdr.keywords) - 1);
+    }
+    std::memset(hdr.keywords, 0, sizeof(hdr.keywords));
+    std::strncpy(hdr.keywords, keyword_str.c_str(), sizeof(hdr.keywords) - 1);
+}
+
 inline void update_bluefile_header(const std::string& filename, double timecode, double center_freq) {
     int fd = open(filename.c_str(), O_RDWR);
     if (fd < 0) throw std::runtime_error("Cannot open BLUE file to modify: " + filename);

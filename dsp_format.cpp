@@ -285,7 +285,7 @@ int main(int argc, char** argv) {
     std::string output_file;
     bool to_complex = false;
     bool to_real = false;
-    std::string method_str = "pad";
+    std::string method_str = "pack";
     std::string extract_str = "unpack";
     std::string cast_str = "";
     size_t taps = 127;
@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
     app.add_flag("--to-complex", to_complex, "Convert Real input to Complex output");
     app.add_flag("--to-real", to_real, "Convert Complex input to Real output");
     
-    app.add_option("--method", method_str, "Method for Real -> Complex (pad, hilbert, pack). Default: pad");
+    app.add_option("--method", method_str, "Method for Real -> Complex (pad, hilbert, pack). Default: pack");
     app.add_option("--extract", extract_str, "Extraction for Complex -> Real (i, q, mag, phase, unpack). Default: unpack");
     app.add_option("--cast", cast_str, "Target data type character (B, I, L, F, D). Default: Keep same as input.");
     app.add_option("--taps", taps, "Number of FIR taps for Hilbert transform (must be odd, default: 127)");
@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    ComplexMethod cmethod = ComplexMethod::Pad;
+    ComplexMethod cmethod = ComplexMethod::Pack;
     if (method_str == "pad") cmethod = ComplexMethod::Pad;
     else if (method_str == "hilbert") cmethod = ComplexMethod::Hilbert;
     else if (method_str == "pack") cmethod = ComplexMethod::Pack;
