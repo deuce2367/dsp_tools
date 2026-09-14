@@ -40,7 +40,7 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
 
     // Setup Tuner
     double shift_freq = file_center - target_freq;
-    double phase_step = -2.0 * M_PI * shift_freq / input_rate;
+    double phase_step = 2.0 * M_PI * shift_freq / input_rate;
     double current_phase = 0.0;
 
 

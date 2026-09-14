@@ -73,6 +73,8 @@ const SigPlot = ({ dataUrl, type, zmin, zmax, theme = 'dark', fftColor = '#00ff0
           } else if (onDataLoaded && layer) {
              if (type === 'constellation') {
                  sigplotInstance.current.change_settings({ cmode: 5 });
+             } else if (type === '1D' || type === '2D') {
+                 sigplotInstance.current.change_settings({ cmode: 4 });
              }
              
              // Auto-scaled! Tell parent what bounds were chosen

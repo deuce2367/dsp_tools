@@ -154,6 +154,62 @@ const ColormapSelect = ({ options, value, onChange, gradients }) => {
   );
 };
 
+const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
+  const containerRef = useRef(null);
+  const [imgUrl, setImgUrl] = useState(initialSpecUrl);
+  const [error, setError] = useState(null);
+
+  const fetchPlot = useCallback(async (width, height) => {
+    if (!audioUrl || width === 0 || height === 0) return;
+    try {
+      const filename = audioUrl.split('/').pop();
+      const res = await fetch('/api/run/plot_audio_waveform', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_file: filename,
+          width: Math.floor(width),
+          height: Math.floor(height),
+          theme: theme,
+          fill_color: fftColor
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.detail);
+      else {
+        setImgUrl(`/api/data/${data.output_file}?t=${new Date().getTime()}`);
+        setError(null);
+      }
+    } catch (e) {
+      setError(e.toString());
+    }
+  }, [audioUrl, theme, fftColor]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const debouncedFetch = debounce((entries) => {
+      if (!entries || entries.length === 0) return;
+      const { width, height } = entries[0].contentRect;
+      fetchPlot(width, height);
+    }, 500);
+
+    const resizeObserver = new ResizeObserver(debouncedFetch);
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      debouncedFetch.cancel();
+    };
+  }, [fetchPlot]);
+
+  return (
+    <div ref={containerRef} style={{flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'}}>
+        {error ? <div style={{color: 'red', fontSize: '0.8rem'}}>{error}</div> : 
+         !imgUrl ? <div style={{fontSize: '0.9rem', opacity: 0.5}}>Loading plot...</div> : 
+         <img src={imgUrl} alt="Audio Waveform" style={{width: '100%', height: '100%', objectFit: 'fill', borderRadius: '4px', border: '1px solid var(--border-color)'}} />}
+    </div>
+  );
+};
 function App() {
   const [file, setFile] = useState('timecode.prm');
   const [availableFiles, setAvailableFiles] = useState([]);
@@ -1244,7 +1300,7 @@ function App() {
                 disabled={!zoomBounds} 
                 onClick={openTuner}
                 style={{ margin: 0, opacity: zoomBounds ? 1 : 0.5, cursor: zoomBounds ? 'pointer' : 'not-allowed' }}>
-                Sub-Band Tuner (SBT)
+                SBT
               </button>
               <button onClick={() => { setFilterOutName(`${file.split('.')[0]}_filtered.prm`); setShowFilterModal(true); }} style={{margin: 0}} disabled={!fileInfo}>Filter</button>
               <button onClick={() => { setResampleOutName(`${file.split('.')[0]}_resampled.prm`); setShowResampleModal(true); }} style={{margin: 0}} disabled={!fileInfo}>Resample</button>
@@ -1288,7 +1344,7 @@ function App() {
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveFFT()} disabled={loading}>Spectrum</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractivePSD()} disabled={loading}>Waterfall</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveTimeDomain()} disabled={loading}>Time Domain</button>
-            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleInteractiveConstellation()} disabled={loading}>Constellation</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem', opacity: fileInfo?.channels === 2 ? 1 : 0.5}} onClick={() => handleInteractiveConstellation()} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Constellation plot requires Complex (IQ) data" : ""}>Constellation</button>
           </div>
           
           <h3 style={{marginTop: '15px', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', fontSize: '1.1rem'}}>Static Plots</h3>
@@ -1298,7 +1354,7 @@ function App() {
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('fft')} disabled={loading}>Spectrum</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('waterfall')} disabled={loading}>Waterfall</button>
             <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('time_domain')} disabled={loading}>Time Domain</button>
-            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem'}} onClick={() => handleStaticPlot('constellation')} disabled={loading}>Constellation</button>
+            <button style={{flex: 1, padding: '8px 4px', fontSize: '0.8rem', opacity: fileInfo?.channels === 2 ? 1 : 0.5}} onClick={() => handleStaticPlot('constellation')} disabled={loading || fileInfo?.channels !== 2} title={fileInfo?.channels !== 2 ? "Constellation plot requires Complex (IQ) data" : ""}>Constellation</button>
           </div>
 
 
@@ -1394,9 +1450,7 @@ function App() {
                       <div style={{fontSize: '0.8rem', marginBottom: '5px', wordBreak: 'break-all'}}>{panel.outName}</div>
                       <audio controls src={panel.audioUrl} style={{width: '100%', marginBottom: '10px'}} autoPlay></audio>
                       {panel.specUrl && (
-                          <div style={{flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                              <img src={panel.specUrl} alt="Audio Waveform" style={{width: '100%', height: 'calc(100% - 40px)', objectFit: 'fill', borderRadius: '4px', border: '1px solid var(--border-color)'}} />
-                          </div>
+                          <AudioWaveformImage audioUrl={panel.audioUrl} initialSpecUrl={panel.specUrl} theme={theme} fftColor={fftColor} />
                       )}
                       <a href={panel.audioUrl} download={panel.outName} style={{marginTop: '10px', display: 'block', textAlign: 'center', background: 'var(--border-color)', padding: '5px', borderRadius: '4px', color: 'var(--text-color)', textDecoration: 'none', fontSize: '0.9rem'}}>Download WAV</a>
                   </div>
