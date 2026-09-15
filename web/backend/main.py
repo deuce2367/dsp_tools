@@ -16,6 +16,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import dsp_wrapper
+import uuid
+import struct
+import io
 import time
 import asyncio
 import collections
@@ -27,6 +30,8 @@ logger = logging.getLogger("dsp_backend")
 app = FastAPI(title="DSP Web Interface")
 
 DATA_DIR = os.getenv("DSP_DATA_DIR", "/home/apsmith/.gemini/antigravity/scratch/dsp_tools/build")
+TMP_DIR = os.getenv("DSP_TMP_DIR", "/tmp/dsp_tools_tmp")
+os.makedirs(TMP_DIR, exist_ok=True)
 
 memory_cache = collections.OrderedDict()
 
@@ -389,7 +394,7 @@ async def run_demod(req: DemodRequest):
             raise HTTPException(status_code=404, detail="Input file not found")
 
         out_id = f"demod_{uuid.uuid4().hex[:8]}.wav"
-        output_path = os.path.join(DATA_DIR, out_id)
+        output_path = os.path.join(TMP_DIR, out_id)
         
         # We run the C++ pipeline purely in memory and it writes output_path
         import dsp_plotter_py
@@ -506,6 +511,8 @@ def get_data(filename: str):
         
     file_path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(file_path):
+        file_path = os.path.join(TMP_DIR, filename)
+    if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path)
 
@@ -620,8 +627,10 @@ def generate_audio_waveform_plot(input_path: str, output_path: str, req: PlotAud
     
     ax.axis('off')
     plt.tight_layout(pad=0)
-    plt.savefig(output_path, facecolor=bg_color, edgecolor='none')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='jpg', facecolor=bg_color, edgecolor='none')
     plt.close(fig)
+    return buf.getvalue()
 
 @app.post("/api/run/plot_audio_waveform")
 async def run_plot_audio_waveform(req: PlotAudioWaveformRequest):
@@ -629,14 +638,21 @@ async def run_plot_audio_waveform(req: PlotAudioWaveformRequest):
     Generate a symmetric time-domain waveform plot for a stereo WAV file.
     """
     out_id = f"audio_plot_{uuid.uuid4().hex[:8]}.jpg"
-    in_path = os.path.join(DATA_DIR, req.input_file)
-    out_path = os.path.join(DATA_DIR, out_id)
     
-    if not os.path.exists(in_path):
-        raise HTTPException(status_code=404, detail="Input file not found")
+    # Check if the input file is in memory cache, else load from disk
+    if req.input_file in memory_cache:
+        # We need a temporary file for wavfile.read, or we can use io.BytesIO
+        in_path = io.BytesIO(memory_cache[req.input_file])
+    else:
+        in_path = os.path.join(DATA_DIR, req.input_file)
+        if not os.path.exists(in_path):
+            in_path = os.path.join(TMP_DIR, req.input_file)
+        if not os.path.exists(in_path):
+            raise HTTPException(status_code=404, detail="Input file not found")
         
     try:
-        await asyncio.to_thread(generate_audio_waveform_plot, in_path, out_path, req)
+        img_data = await asyncio.to_thread(generate_audio_waveform_plot, in_path, "", req)
+        add_to_cache(out_id, img_data)
         return {"status": "success", "output_file": out_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

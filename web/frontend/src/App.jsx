@@ -185,12 +185,17 @@ const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
     }
   }, [audioUrl, theme, fftColor]);
 
+  const lastSize = useRef({ width: 0, height: 0 });
+
   useEffect(() => {
     if (!containerRef.current) return;
     const debouncedFetch = debounce((entries) => {
       if (!entries || entries.length === 0) return;
       const { width, height } = entries[0].contentRect;
-      fetchPlot(width, height);
+      if (Math.abs(width - lastSize.current.width) > 5 || Math.abs(height - lastSize.current.height) > 5) {
+        lastSize.current = { width, height };
+        fetchPlot(width, height);
+      }
     }, 500);
 
     const resizeObserver = new ResizeObserver(debouncedFetch);

@@ -83,7 +83,7 @@ void run_convert_pipeline(const std::string& input_file, const std::string& outp
         ext = input_file.substr(dot_pos);
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     }
-    
+    bool is_8bit_unsigned_wav = false;
     if (ext == ".wav") {
         spdlog::info("Parsing WAV header...");
         RiffHeader riff;
@@ -120,7 +120,7 @@ void run_convert_pipeline(const std::string& input_file, const std::string& outp
         char type_char = (fmt_chunk.numChannels == 2) ? 'C' : 'S';
         char class_char = 'B';
         if (fmt_chunk.audioFormat == 1) {
-            if (fmt_chunk.bitsPerSample == 8) class_char = 'B';
+            if (fmt_chunk.bitsPerSample == 8) { class_char = 'B'; is_8bit_unsigned_wav = true; }
             else if (fmt_chunk.bitsPerSample == 16) class_char = 'I';
             else if (fmt_chunk.bitsPerSample == 32) class_char = 'L';
         } else if (fmt_chunk.audioFormat == 3) {
@@ -184,6 +184,13 @@ void run_convert_pipeline(const std::string& input_file, const std::string& outp
         in.read(buffer.data(), to_read);
         size_t bytes_read = in.gcount();
         if (bytes_read == 0) break;
+        
+        if (is_8bit_unsigned_wav) {
+            uint8_t* u_buf = reinterpret_cast<uint8_t*>(buffer.data());
+            for (size_t i = 0; i < bytes_read; ++i) {
+                u_buf[i] ^= 0x80;
+            }
+        }
         
         size_t written = 0;
         while (written < bytes_read) {

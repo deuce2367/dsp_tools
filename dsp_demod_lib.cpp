@@ -105,19 +105,22 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
 
     bool is_float = (hdr.format[1] == 'F');
     bool is_int16 = (hdr.format[1] == 'I');
+    bool is_int8 = (hdr.format[1] == 'B');
     
-    if (!is_float && !is_int16) {
+    if (!is_float && !is_int16 && !is_int8) {
         if (fm_demod) freqdem_destroy(fm_demod);
         if (am_demod) ampmodem_destroy(am_demod);
         spdlog::error("Unsupported format type: {}", hdr.format[1]);
         return;
     }
 
-    size_t total_samples = data_bytes / (is_float ? sizeof(float) : sizeof(int16_t));
+    size_t bytes_per_sample = is_float ? sizeof(float) : (is_int16 ? sizeof(int16_t) : sizeof(int8_t));
+    size_t total_samples = data_bytes / bytes_per_sample;
     size_t total_input_frames = total_samples / 2;
 
     const float* in_ptr_f32 = reinterpret_cast<const float*>(mmap_in.ptr + data_offset);
     const int16_t* in_ptr_i16 = reinterpret_cast<const int16_t*>(mmap_in.ptr + data_offset);
+    const int8_t* in_ptr_i8 = reinterpret_cast<const int8_t*>(mmap_in.ptr + data_offset);
 
     size_t frames_processed = 0;
     size_t chunk_size = 102400;
@@ -139,9 +142,12 @@ void demodulate_pipeline(const std::string& input_file, const std::string& outpu
             if (is_float) {
                 i_val = in_ptr_f32[(frames_processed + i) * 2];
                 q_val = in_ptr_f32[(frames_processed + i) * 2 + 1];
-            } else {
+            } else if (is_int16) {
                 i_val = in_ptr_i16[(frames_processed + i) * 2] / 32768.0f;
                 q_val = in_ptr_i16[(frames_processed + i) * 2 + 1] / 32768.0f;
+            } else {
+                i_val = in_ptr_i8[(frames_processed + i) * 2] / 128.0f;
+                q_val = in_ptr_i8[(frames_processed + i) * 2 + 1] / 128.0f;
             }
             
             // 1. Tune (NCO shift)
