@@ -238,10 +238,6 @@ std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
     
     const uint8_t* in_data = mmap_in.ptr + data_offset;
     
-    double agc_gain = 1.0;
-    double alpha = 0.01;
-    double target_mag = 1.0;
-    
     for (size_t i = 0; i < samples_to_read; ++i) {
         size_t src_idx = start_idx + i * step;
         float i_val = 0.0f, q_val = 0.0f;
@@ -268,16 +264,8 @@ std::vector<uint8_t> DspTimeDomain::extract_raw_iq(
             q_val = is_complex ? static_cast<float>(src[1]) : 0.0f;
         }
         
-        double mag = std::sqrt(i_val * i_val + q_val * q_val);
-        if (mag > 1e-6) {
-            double error = (target_mag / mag) - agc_gain;
-            agc_gain += alpha * error;
-            out_ptr[i * 2] = static_cast<float>(i_val * agc_gain);
-            out_ptr[i * 2 + 1] = static_cast<float>(q_val * agc_gain);
-        } else {
-            out_ptr[i * 2] = 0.0f;
-            out_ptr[i * 2 + 1] = 0.0f;
-        }
+        out_ptr[i * 2] = i_val;
+        out_ptr[i * 2 + 1] = q_val;
     }
     
     return out_buffer;

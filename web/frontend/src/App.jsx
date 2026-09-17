@@ -33,8 +33,8 @@ const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colo
           theme: theme,
           fill_mode: fillMode,
           fill_color: fillColor,
-          zmin: panel.subType === 'constellation' ? undefined : (zmin === '' ? undefined : Number(zmin)),
-          zmax: panel.subType === 'constellation' ? undefined : (zmax === '' ? undefined : Number(zmax)),
+          zmin: (panel.subType === 'constellation' || panel.subType === 'time_domain') ? undefined : (zmin === '' ? undefined : Number(zmin)),
+          zmax: (panel.subType === 'constellation' || panel.subType === 'time_domain') ? undefined : (zmax === '' ? undefined : Number(zmax)),
           window_type: windowType,
           stride_ratio: Number(strideRatio)
         })
@@ -206,6 +206,12 @@ const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
       debouncedFetch.cancel();
     };
   }, [fetchPlot]);
+
+  useEffect(() => {
+    if (containerRef.current && lastSize.current.width > 0) {
+      fetchPlot(lastSize.current.width, lastSize.current.height);
+    }
+  }, [theme, fftColor, fetchPlot]);
 
   return (
     <div ref={containerRef} style={{flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'}}>
@@ -566,13 +572,18 @@ function App() {
           if (data.center_freq !== undefined) {
             setCenterFreq(data.center_freq);
           }
+          // Force reload of open interactive plots to reflect new metadata
+          if (panels.find(p => p.id === 'interactive-fft')) handleInteractiveFFT(file, data.center_freq);
+          if (panels.find(p => p.id === 'interactive-psd')) handleInteractivePSD(file, data.center_freq);
+          if (panels.find(p => p.id === 'interactive-time-domain')) handleInteractiveTimeDomain(file, data.center_freq);
+          if (panels.find(p => p.id === 'interactive-constellation')) handleInteractiveConstellation(file, data.center_freq);
         }
       } else {
         const data = await res.json();
         alert("Update failed: " + (data.detail || "Unknown error"));
       }
     } catch(err) {
-      alert("Error saving info: " + err);
+      alert("Update error: " + err);
     }
   };
 
@@ -1016,8 +1027,8 @@ function App() {
           <button onClick={() => setIsColorModalOpen(true)} style={{padding: '5px 10px', height: '32px', width: 'auto', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}} title="Color & Styling Options">
             <div style={{width: '18px', height: '18px', borderRadius: '50%', background: 'conic-gradient(#ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)', border: '1px solid var(--border-color)'}}></div>
           </button>
-          <button onClick={() => setIsSettingsModalOpen(true)} style={{padding: '5px 10px', height: '32px', width: 'auto', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem'}} title="Settings">
-            ⚙️
+          <button onClick={() => setIsSettingsModalOpen(true)} style={{padding: '5px 10px', height: '32px', width: 'auto', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'}} title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           </button>
           <button onClick={toggleTheme} style={{padding: '5px 10px', height: '32px', width: 'auto', margin: 0}}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
         </div>
@@ -1370,19 +1381,19 @@ function App() {
             flex: 3, 
             display: 'grid', 
             gap: '10px',
-            gridTemplateColumns: panels.length === 0 ? '1fr' :
-                                 panels.length === 1 ? '1fr' : 
-                                 panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr 1fr' : '1fr') :
-                                 panels.length === 3 ? (layoutMode === 'vertical' ? '1fr' : '1fr 1fr 1fr') :
-                                 panels.length === 4 ? '1fr 1fr' :
-                                 panels.length <= 6 ? '1fr 1fr 1fr' :
-                                 '1fr 1fr 1fr 1fr',
-            gridTemplateRows: panels.length === 0 ? '1fr' :
-                              panels.length === 1 ? '1fr' :
-                              panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? '1fr' : '1fr 1fr') :
-                              panels.length === 3 ? (layoutMode === 'vertical' ? '1fr 1fr 1fr' : '1fr') :
-                              panels.length <= 8 ? '1fr 1fr' :
-                              '1fr 1fr 1fr',
+            gridTemplateColumns: panels.length === 0 ? 'minmax(0, 1fr)' :
+                                 panels.length === 1 ? 'minmax(0, 1fr)' : 
+                                 panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)') :
+                                 panels.length === 3 ? (layoutMode === 'vertical' ? 'minmax(0, 1fr)' : 'repeat(3, minmax(0, 1fr))') :
+                                 panels.length === 4 ? 'repeat(2, minmax(0, 1fr))' :
+                                 panels.length <= 6 ? 'repeat(3, minmax(0, 1fr))' :
+                                 'repeat(4, minmax(0, 1fr))',
+            gridTemplateRows: panels.length === 0 ? 'minmax(0, 1fr)' :
+                              panels.length === 1 ? 'minmax(0, 1fr)' :
+                              panels.length === 2 ? (layoutMode === 'horizontal' || layoutMode === 'auto' ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))') :
+                              panels.length === 3 ? (layoutMode === 'vertical' ? 'repeat(3, minmax(0, 1fr))' : 'minmax(0, 1fr)') :
+                              panels.length <= 8 ? 'repeat(2, minmax(0, 1fr))' :
+                              'repeat(3, minmax(0, 1fr))',
         }}>
           {panels.length === 0 && (
             <div className="panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
