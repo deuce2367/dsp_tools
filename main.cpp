@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
     auto opt_fft_size = app.add_option("--fft-size", fft_size, "FFT size (default: 512)");
     auto opt_stride = app.add_option("--stride-ratio", stride_ratio, "Time stride ratio relative to FFT window. E.g. 0.5 is 50% overlap, 1.25 leaves gaps (default: auto-fit to image height)");
     app.add_option("-c,--colormap", colormap, "Colormap for waterfall (default: gqrx)")
-        ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape"}));
+        ->check(CLI::IsMember({"electric", "gqrx", "websdr", "pablo", "frog", "jet", "turbo", "grape", "greyscale", "sunset", "hot", "cold"}));
     
     auto opt_center_freq = app.add_option("--center-freq", center_freq, "Original center frequency in MHz (for axis labels)");
     app.add_option("--bandwidth", bandwidth, "Original bandwidth in MHz (for axis labels)");

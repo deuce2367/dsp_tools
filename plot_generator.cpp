@@ -617,6 +617,10 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         if (colormap_name == "frog") return Colormap::get_frog(norm);
         if (colormap_name == "grape") return Colormap::get_grape(norm);
         if (colormap_name == "jet") return Colormap::get_jet(norm);
+        if (colormap_name == "greyscale") return Colormap::get_greyscale(norm);
+        if (colormap_name == "sunset") return Colormap::get_sunset(norm);
+        if (colormap_name == "hot") return Colormap::get_hot(norm);
+        if (colormap_name == "cold") return Colormap::get_cold(norm);
         return Colormap::get_turbo(norm); // default
     };
 
@@ -805,6 +809,10 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         if (colormap_name == "frog") return Colormap::get_frog(norm);
         if (colormap_name == "grape") return Colormap::get_grape(norm);
         if (colormap_name == "jet") return Colormap::get_jet(norm);
+        if (colormap_name == "greyscale") return Colormap::get_greyscale(norm);
+        if (colormap_name == "sunset") return Colormap::get_sunset(norm);
+        if (colormap_name == "hot") return Colormap::get_hot(norm);
+        if (colormap_name == "cold") return Colormap::get_cold(norm);
         return Colormap::get_turbo(norm); 
     };
 
