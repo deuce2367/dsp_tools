@@ -94,20 +94,188 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         });
 
     py::class_<PlotGenerator>(m, "PlotGenerator")
-        .def_static("generate_fast_waterfall", &PlotGenerator::generate_fast_waterfall,
+        .def_static("encode_image_mem", [](py::bytes rgb_bytes, int width, int height, const std::string& out_format, int image_quality, int png_compression) {
+            std::string raw = rgb_bytes;
+            std::vector<uint8_t> pixels(raw.begin(), raw.end());
+            std::vector<uint8_t> out_buffer;
+            PlotGenerator::encode_image_mem(pixels, width, height, out_buffer, out_format, image_quality, png_compression);
+            return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        }, py::arg("rgb_pixels"), py::arg("width"), py::arg("height"), py::arg("out_format") = "png", py::arg("image_quality") = 90, py::arg("png_compression") = -1)
+        .def_static("encode_image_file", [](py::bytes rgb_bytes, int width, int height, const std::string& output_filename, const std::string& out_format, int image_quality, int png_compression) {
+            std::string raw = rgb_bytes;
+            std::vector<uint8_t> pixels(raw.begin(), raw.end());
+            PlotGenerator::encode_image_file(pixels, width, height, output_filename, out_format, image_quality, png_compression);
+        }, py::arg("rgb_pixels"), py::arg("width"), py::arg("height"), py::arg("output_filename"), py::arg("out_format") = "png", py::arg("image_quality") = 90, py::arg("png_compression") = -1)
+        .def_static("generate_fast_waterfall", [](const std::vector<std::vector<double>>& spectrogram_db,
+                                                  const std::string& output_filename,
+                                                  int out_width, int out_height,
+                                                  const std::string& colormap,
+                                                  double min_db, double max_db,
+                                                  double center_freq_mhz, double bandwidth_mhz,
+                                                  const std::string& start_time_iso, double total_duration_sec,
+                                                  bool draw_grid, bool draw_labels,
+                                                  const std::string& out_format,
+                                                  int num_x_ticks, int num_y_ticks,
+                                                  const std::string& title,
+                                                  int image_quality,
+                                                  int png_compression,
+                                                  const std::string& font_path,
+                                                  double box_start_time, double box_duration,
+                                                  double box_center_freq, double box_bw,
+                                                  const std::string& box_color,
+                                                  py::kwargs kwargs) {
+            if (kwargs.contains("jpeg_quality")) {
+                image_quality = kwargs["jpeg_quality"].cast<int>();
+            }
+            PlotGenerator::generate_fast_waterfall(spectrogram_db, output_filename, out_width, out_height, colormap,
+                min_db, max_db, center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec,
+                draw_grid, draw_labels, out_format, num_x_ticks, num_y_ticks, title, image_quality, png_compression,
+                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color);
+        },
             py::arg("spectrogram_db"), py::arg("output_filename"), py::arg("out_width"), py::arg("out_height"),
             py::arg("colormap"), py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
             py::arg("start_time_iso"), py::arg("total_duration_sec"), py::arg("draw_grid") = true, py::arg("draw_labels") = true,
             py::arg("out_format") = "png", py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
-            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("font_path") = "",
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("font_path") = "",
             py::arg("box_start_time") = -1.0, py::arg("box_duration") = 0.0, py::arg("box_center_freq") = 0.0, py::arg("box_bw") = 0.0,
             py::arg("box_color") = "red")
-        .def_static("generate_fast_fft_plot", &PlotGenerator::generate_fast_fft_plot,
+        .def_static("generate_fast_fft_plot", [](const std::vector<double>& frequency_bins,
+                                                 const std::vector<double>& magnitude_db,
+                                                 const std::string& output_filename,
+                                                 int out_width, int out_height,
+                                                 double min_db, double max_db,
+                                                 double center_freq_mhz, double bandwidth_mhz,
+                                                 bool draw_grid, bool draw_labels,
+                                                 const std::string& out_format,
+                                                 int num_x_ticks, int num_y_ticks,
+                                                 const std::string& title,
+                                                 int image_quality,
+                                                 int png_compression,
+                                                 const std::string& colormap_name,
+                                                 const std::string& font_path,
+                                                 py::kwargs kwargs) {
+            if (kwargs.contains("jpeg_quality")) {
+                image_quality = kwargs["jpeg_quality"].cast<int>();
+            }
+            PlotGenerator::generate_fast_fft_plot(frequency_bins, magnitude_db, output_filename, out_width, out_height,
+                min_db, max_db, center_freq_mhz, bandwidth_mhz, draw_grid, draw_labels, out_format,
+                num_x_ticks, num_y_ticks, title, image_quality, png_compression, colormap_name, font_path);
+        },
             py::arg("frequency_bins"), py::arg("magnitude_db"), py::arg("output_filename"), py::arg("out_width"), py::arg("out_height"),
             py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
             py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
             py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
-            py::arg("jpeg_quality") = 90, py::arg("png_compression") = 8, py::arg("colormap_name") = "jet", py::arg("font_path") = "");
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("colormap_name") = "jet", py::arg("font_path") = "")
+        .def_static("generate_fast_waterfall_mem", [](const std::vector<std::vector<double>>& spectrogram_db,
+                                                      int out_width, int out_height,
+                                                      const std::string& colormap,
+                                                      double min_db, double max_db,
+                                                      double center_freq_mhz, double bandwidth_mhz,
+                                                      const std::string& start_time_iso, double total_duration_sec,
+                                                      bool draw_grid, bool draw_labels,
+                                                      const std::string& out_format,
+                                                      int num_x_ticks, int num_y_ticks,
+                                                      const std::string& title,
+                                                      int image_quality,
+                                                      int png_compression,
+                                                      const std::string& font_path,
+                                                      double box_start_time, double box_duration,
+                                                      double box_center_freq, double box_bw,
+                                                      const std::string& box_color,
+                                                      const std::string& theme) {
+            std::vector<uint8_t> out_buffer;
+            PlotGenerator::generate_fast_waterfall_mem(spectrogram_db, out_buffer, out_width, out_height, colormap,
+                min_db, max_db, center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec,
+                draw_grid, draw_labels, out_format, num_x_ticks, num_y_ticks, title, image_quality, png_compression,
+                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color, theme);
+            return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        },
+            py::arg("spectrogram_db"), py::arg("out_width"), py::arg("out_height"),
+            py::arg("colormap"), py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
+            py::arg("start_time_iso"), py::arg("total_duration_sec"), py::arg("draw_grid") = true, py::arg("draw_labels") = true,
+            py::arg("out_format") = "png", py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("font_path") = "",
+            py::arg("box_start_time") = -1.0, py::arg("box_duration") = 0.0, py::arg("box_center_freq") = 0.0, py::arg("box_bw") = 0.0,
+            py::arg("box_color") = "red", py::arg("theme") = "dark")
+        .def_static("generate_fast_fft_plot_mem", [](const std::vector<double>& frequency_bins,
+                                                     const std::vector<double>& magnitude_db,
+                                                     int out_width, int out_height,
+                                                     double min_db, double max_db,
+                                                     double center_freq_mhz, double bandwidth_mhz,
+                                                     bool draw_grid, bool draw_labels,
+                                                     const std::string& out_format,
+                                                     int num_x_ticks, int num_y_ticks,
+                                                     const std::string& title,
+                                                     int image_quality,
+                                                     int png_compression,
+                                                     const std::string& colormap_name,
+                                                     const std::string& font_path,
+                                                     const std::string& theme,
+                                                     const std::string& fill_mode,
+                                                     const std::string& fill_color_hex) {
+            std::vector<uint8_t> out_buffer;
+            PlotGenerator::generate_fast_fft_plot_mem(frequency_bins, magnitude_db, out_buffer, out_width, out_height,
+                min_db, max_db, center_freq_mhz, bandwidth_mhz, draw_grid, draw_labels, out_format,
+                num_x_ticks, num_y_ticks, title, image_quality, png_compression, colormap_name, font_path,
+                theme, fill_mode, fill_color_hex);
+            return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        },
+            py::arg("frequency_bins"), py::arg("magnitude_db"), py::arg("out_width"), py::arg("out_height"),
+            py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
+            py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
+            py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("colormap_name") = "jet",
+            py::arg("font_path") = "", py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color_hex") = "#00FF00")
+        .def_static("generate_time_domain_plot_mem", [](const std::vector<float>& time_domain_data, bool is_complex,
+                                                        int out_width, int out_height,
+                                                        double min_val, double max_val,
+                                                        double start_time_sec, double duration_sec,
+                                                        bool draw_grid, bool draw_labels,
+                                                        const std::string& out_format,
+                                                        int num_x_ticks, int num_y_ticks,
+                                                        const std::string& title,
+                                                        int image_quality,
+                                                        int png_compression,
+                                                        const std::string& font_path,
+                                                        const std::string& theme,
+                                                        const std::string& color_i_hex,
+                                                        const std::string& color_q_hex) {
+            std::vector<uint8_t> out_buffer;
+            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_complex, out_buffer, out_width, out_height,
+                min_val, max_val, start_time_sec, duration_sec, draw_grid, draw_labels, out_format,
+                num_x_ticks, num_y_ticks, title, image_quality, png_compression, font_path, theme, color_i_hex, color_q_hex);
+            return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        },
+            py::arg("time_domain_data"), py::arg("is_complex"), py::arg("out_width"), py::arg("out_height"),
+            py::arg("min_val"), py::arg("max_val"), py::arg("start_time_sec"), py::arg("duration_sec"),
+            py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
+            py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("font_path") = "",
+            py::arg("theme") = "dark", py::arg("color_i_hex") = "#00FF00", py::arg("color_q_hex") = "#0088FF")
+        .def_static("generate_constellation_plot_mem", [](const std::vector<float>& iq_data,
+                                                          int out_width, int out_height,
+                                                          double min_val, double max_val,
+                                                          bool draw_grid, bool draw_labels,
+                                                          const std::string& out_format,
+                                                          int num_x_ticks, int num_y_ticks,
+                                                          const std::string& title,
+                                                          int image_quality,
+                                                          int png_compression,
+                                                          const std::string& font_path,
+                                                          const std::string& theme,
+                                                          const std::string& color_hex) {
+            std::vector<uint8_t> out_buffer;
+            PlotGenerator::generate_constellation_plot_mem(iq_data, out_buffer, out_width, out_height,
+                min_val, max_val, draw_grid, draw_labels, out_format, num_x_ticks, num_y_ticks, title,
+                image_quality, png_compression, font_path, theme, color_hex);
+            return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
+        },
+            py::arg("iq_data"), py::arg("out_width"), py::arg("out_height"),
+            py::arg("min_val"), py::arg("max_val"),
+            py::arg("draw_grid") = true, py::arg("draw_labels") = true, py::arg("out_format") = "png",
+            py::arg("num_x_ticks") = 10, py::arg("num_y_ticks") = 10, py::arg("title") = "",
+            py::arg("image_quality") = 90, py::arg("png_compression") = -1, py::arg("font_path") = "",
+            py::arg("theme") = "dark", py::arg("color_hex") = "#00FF00");
 
 #include "dsp_operations.hpp"
 
@@ -354,7 +522,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                                  double start_time, double duration, size_t window_size, int smoothing, const std::string& window_type, double stride_ratio,
                                  bool plot_fft, bool plot_waterfall, bool plot_time_domain, const std::string& time_domain_mode, bool plot_constellation, const std::string& colormap, int width, int height,
                                  const std::string& theme, const std::string& fill_mode, const std::string& fill_color_hex,
-                                 double zmin, double zmax) {
+                                 double zmin, double zmax, int image_quality) {
         DspEngine engine(width);
         DspEngine::StreamConfig config;
         config.filename = input_file;
@@ -408,7 +576,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         
         if (plot_waterfall && !result.spectrogram.empty()) {
             PlotGenerator::generate_fast_waterfall_mem(result.spectrogram, out_buffer, width, height, colormap,
-                final_min_db, final_max_db, z_center, fs, start_time_str, total_duration_sec, true, true, out_format, 10, 10, "", 90, 8, "", -1.0, 0.0, 0.0, 0.0, "red", theme);
+                final_min_db, final_max_db, z_center, fs, start_time_str, total_duration_sec, true, true, out_format, 10, 10, "", image_quality, -1, "", -1.0, 0.0, 0.0, 0.0, "red", theme);
         } else if (plot_fft && !result.spectrogram.empty()) {
             size_t num_frames = result.spectrogram.size();
             size_t frame_size = result.spectrogram[0].size();
@@ -421,7 +589,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             for (size_t i = 0; i < frame_size; ++i) {
                 avg_mag[i] /= num_frames;
             }
-            PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 15, "", 90, 8, colormap, "", theme, fill_mode, fill_color_hex);
+            PlotGenerator::generate_fast_fft_plot_mem(freq_bins, avg_mag, out_buffer, width, height, final_min_db, final_max_db, z_center, fs, true, true, out_format, 10, 15, "", image_quality, -1, colormap, "", theme, fill_mode, fill_color_hex);
         } else if (plot_time_domain) {
             size_t target_pts = 10000;
             std::vector<uint8_t> td_buf = DspTimeDomain::generate_time_domain_envelope(input_file, start_time, duration, target_pts, time_domain_mode);
@@ -450,7 +618,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             size_t floats_per_bucket = is_cpx ? 4 : 2;
             size_t actual_buckets = actual_floats / floats_per_bucket;
             
-            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", 90, 8, "", theme, fill_color_hex, "#0088FF");
+            PlotGenerator::generate_time_domain_plot_mem(time_domain_data, is_cpx, out_buffer, width, height, final_min_val, final_max_val, act_start_time, actual_buckets * (hdr.xdelta * 2.0), true, true, out_format, 10, 15, "", image_quality, -1, "", theme, fill_color_hex, "#0088FF");
         } else if (plot_constellation) {
             size_t max_points = 100000;
             std::vector<uint8_t> raw_buf = DspTimeDomain::extract_raw_iq(input_file, start_time, duration, max_points);
@@ -468,7 +636,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                 double final_min_val = (zmin > -999.0) ? zmin : actual_min_val;
                 double final_max_val = (zmax < 999.0) ? zmax : actual_max_val;
                 
-                PlotGenerator::generate_constellation_plot_mem(iq_data, out_buffer, width, height, final_min_val, final_max_val, true, true, out_format, 10, 10, "", 90, 8, "", theme, fill_color_hex);
+                PlotGenerator::generate_constellation_plot_mem(iq_data, out_buffer, width, height, final_min_val, final_max_val, true, true, out_format, 10, 10, "", image_quality, -1, "", theme, fill_color_hex);
             }
         }
 
@@ -476,5 +644,5 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
         std::string s_buf(out_buffer.begin(), out_buffer.end());
         py::gil_scoped_acquire acquire;
         return py::bytes(s_buf);
-    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type"), py::arg("stride_ratio"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("time_domain_mode"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::call_guard<py::gil_scoped_release>());
+    }, py::arg("input_file"), py::arg("out_format"), py::arg("center_freq"), py::arg("zoom_center"), py::arg("zoom_bw"), py::arg("start_time"), py::arg("duration"), py::arg("window_size"), py::arg("smoothing"), py::arg("window_type"), py::arg("stride_ratio"), py::arg("plot_fft"), py::arg("plot_waterfall"), py::arg("plot_time_domain"), py::arg("time_domain_mode"), py::arg("plot_constellation"), py::arg("colormap"), py::arg("width"), py::arg("height"), py::arg("theme") = "dark", py::arg("fill_mode") = "gradient", py::arg("fill_color") = "#00FF00", py::arg("zmin") = -1000.0, py::arg("zmax") = 1000.0, py::arg("image_quality") = 90, py::call_guard<py::gil_scoped_release>());
 }

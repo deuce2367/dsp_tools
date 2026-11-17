@@ -1,5 +1,5 @@
 # Build Stage 1: C++ Tools
-ARG JOBS=5
+ARG JOBS=8
 FROM python:3.13-slim AS cpp-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libomp-dev \
     libliquid-dev \
+    libwebp-dev \
+    libavif-dev \
     gcovr \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,6 +36,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     libgomp1 \
     libliquid-dev \
+    libwebp-dev \
+    libavif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group

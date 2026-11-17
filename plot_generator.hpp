@@ -6,7 +6,25 @@
 
 class PlotGenerator {
 public:
-    // Fast waterfall rendering using stb_image_write
+    // Encode raw RGB pixels (3 bytes per pixel) to an image format in memory
+    // Supported formats: "png", "jpg" / "jpeg", "webp", "avif"
+    // image_quality is normalized from 1 to 100 across formats.
+    static void encode_image_mem(const std::vector<uint8_t>& rgb_pixels,
+                                 int width, int height,
+                                 std::vector<uint8_t>& out_buffer,
+                                 const std::string& out_format = "png",
+                                 int image_quality = 90,
+                                 int png_compression = -1);
+
+    // Encode raw RGB pixels (3 bytes per pixel) to an image file on disk
+    static void encode_image_file(const std::vector<uint8_t>& rgb_pixels,
+                                  int width, int height,
+                                  const std::string& output_filename,
+                                  const std::string& out_format = "png",
+                                  int image_quality = 90,
+                                  int png_compression = -1);
+
+    // Fast waterfall rendering
     static void generate_fast_waterfall(const std::vector<std::vector<double>>& spectrogram_db,
                                         const std::string& output_filename,
                                         int out_width, int out_height,
@@ -18,8 +36,8 @@ public:
                                         const std::string& out_format = "png",
                                         int num_x_ticks = 10, int num_y_ticks = 10,
                                         const std::string& title = "",
-                                        int jpeg_quality = 90,
-                                        int png_compression = 8,
+                                        int image_quality = 90,
+                                        int png_compression = -1,
                                         const std::string& font_path = "",
                                         double box_start_time = -1.0, double box_duration = 0.0,
                                         double box_center_freq = 0.0, double box_bw = 0.0,
@@ -36,8 +54,8 @@ public:
                                        const std::string& out_format = "png",
                                        int num_x_ticks = 10, int num_y_ticks = 10,
                                        const std::string& title = "",
-                                       int jpeg_quality = 90,
-                                       int png_compression = 8,
+                                       int image_quality = 90,
+                                       int png_compression = -1,
                                        const std::string& colormap_name = "jet",
                                        const std::string& font_path = "");
 
@@ -53,8 +71,8 @@ public:
                                         const std::string& out_format = "png",
                                         int num_x_ticks = 10, int num_y_ticks = 10,
                                         const std::string& title = "",
-                                        int jpeg_quality = 90,
-                                        int png_compression = 8,
+                                        int image_quality = 90,
+                                        int png_compression = -1,
                                         const std::string& font_path = "",
                                         double box_start_time = -1.0, double box_duration = 0.0,
                                         double box_center_freq = 0.0, double box_bw = 0.0,
@@ -72,8 +90,8 @@ public:
                                        const std::string& out_format = "png",
                                        int num_x_ticks = 10, int num_y_ticks = 10,
                                        const std::string& title = "",
-                                       int jpeg_quality = 90,
-                                       int png_compression = 8,
+                                       int image_quality = 90,
+                                       int png_compression = -1,
                                        const std::string& colormap_name = "jet",
                                        const std::string& font_path = "",
                                        const std::string& theme = "dark",
@@ -90,8 +108,8 @@ public:
                                        const std::string& out_format = "png",
                                        int num_x_ticks = 10, int num_y_ticks = 10,
                                        const std::string& title = "",
-                                       int jpeg_quality = 90,
-                                       int png_compression = 8,
+                                       int image_quality = 90,
+                                       int png_compression = -1,
                                        const std::string& font_path = "",
                                        const std::string& theme = "dark",
                                        const std::string& color_i_hex = "#00FF00",
@@ -106,8 +124,8 @@ public:
                                        const std::string& out_format = "png",
                                        int num_x_ticks = 10, int num_y_ticks = 10,
                                        const std::string& title = "",
-                                       int jpeg_quality = 90,
-                                       int png_compression = 8,
+                                       int image_quality = 90,
+                                       int png_compression = -1,
                                        const std::string& font_path = "",
                                        const std::string& theme = "dark",
                                        const std::string& color_hex = "#00FF00");

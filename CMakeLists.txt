@@ -11,11 +11,23 @@ endif()
 
 # Suppress warnings from third-party libraries (KFR, spdlog, fmt)
 add_compile_options(-Wno-attributes)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15.0)
+    add_compile_options(-Wno-template-body)
+endif()
 
 option(DSP_TOOLS_COVERAGE "Enable code coverage reporting" OFF)
 
 # Suppress deprecation warnings from third-party FetchContent modules globally
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+
+include(ProcessorCount)
+ProcessorCount(N_CPUS)
+if(N_CPUS GREATER 1)
+    math(EXPR HALF_CPUS "${N_CPUS} / 2")
+else()
+    set(HALF_CPUS 1)
+endif()
 
 if(POLICY CMP0148)
     cmake_policy(SET CMP0148 OLD)
@@ -97,6 +109,92 @@ if(DOWNLOAD_DEPS_ONLY)
     return()
 endif()
 
+set(SYSROOT_DIR "${CMAKE_BINARY_DIR}/_sysroot")
+if(NOT EXISTS "/usr/include/webp/encode.h" OR NOT EXISTS "/usr/include/avif/avif.h" OR NOT EXISTS "/usr/include/liquid/liquid.h")
+    find_program(APT_GET_EXEC apt-get)
+    find_program(DPKG_DEB_EXEC dpkg-deb)
+    if(APT_GET_EXEC AND DPKG_DEB_EXEC AND NOT EXISTS "${SYSROOT_DIR}/usr/include/avif/avif.h")
+        message(STATUS "Populating local build/_sysroot with required development headers/libs...")
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/_sysroot_debs" "${SYSROOT_DIR}")
+        execute_process(
+            COMMAND ${APT_GET_EXEC} download libwebp-dev libsharpyuv-dev libwebpdecoder3 libavif-dev libavif16 libaom-dev libdav1d-dev libyuv-dev libyuv0 libgav1-2 libliquid-dev
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/_sysroot_debs"
+            RESULT_VARIABLE APT_DL_RES
+        )
+        if(APT_DL_RES EQUAL 0)
+            file(GLOB DEB_FILES "${CMAKE_BINARY_DIR}/_sysroot_debs/*.deb")
+            foreach(DEB_FILE ${DEB_FILES})
+                execute_process(COMMAND ${DPKG_DEB_EXEC} -x "${DEB_FILE}" "${SYSROOT_DIR}")
+            endforeach()
+        endif()
+        file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_sysroot_debs")
+    endif()
+endif()
+
+if(EXISTS "${SYSROOT_DIR}/usr")
+    set(SYSROOT_LIBDIR "${SYSROOT_DIR}/usr/lib/x86_64-linux-gnu")
+    if(EXISTS "/usr/lib/x86_64-linux-gnu/libwebp.so.7")
+        file(CREATE_LINK "/usr/lib/x86_64-linux-gnu/libwebp.so.7" "${SYSROOT_LIBDIR}/libwebp.so" SYMBOLIC)
+    endif()
+    if(EXISTS "/usr/lib/x86_64-linux-gnu/libliquid.so.1")
+        file(CREATE_LINK "/usr/lib/x86_64-linux-gnu/libliquid.so.1" "${SYSROOT_LIBDIR}/libliquid.so" SYMBOLIC)
+    endif()
+    if(EXISTS "/usr/lib/x86_64-linux-gnu/libaom.so.3")
+        file(CREATE_LINK "/usr/lib/x86_64-linux-gnu/libaom.so.3" "${SYSROOT_LIBDIR}/libaom.so" SYMBOLIC)
+    endif()
+    if(EXISTS "/usr/lib/x86_64-linux-gnu/libdav1d.so.7")
+        file(CREATE_LINK "/usr/lib/x86_64-linux-gnu/libdav1d.so.7" "${SYSROOT_LIBDIR}/libdav1d.so" SYMBOLIC)
+    endif()
+    include_directories("${SYSROOT_DIR}/usr/include")
+    link_directories("${SYSROOT_LIBDIR}" "/usr/lib/x86_64-linux-gnu")
+    set(CMAKE_BUILD_RPATH "${SYSROOT_LIBDIR}")
+    add_link_options("-Wl,--disable-new-dtags,-rpath,${SYSROOT_LIBDIR}")
+endif()
+
+find_path(WEBP_INCLUDE_DIR webp/encode.h PATHS "/usr/include" "${SYSROOT_DIR}/usr/include")
+find_library(WEBP_LIBRARY NAMES webp libwebp.so.7 PATHS "/usr/lib/x86_64-linux-gnu" "/usr/lib" "${SYSROOT_DIR}/usr/lib/x86_64-linux-gnu")
+if(NOT WEBP_INCLUDE_DIR OR NOT WEBP_LIBRARY)
+    set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_CWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_DWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_GIF2WEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_IMG2WEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_VWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_WEBPINFO OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        libwebp
+        GIT_REPOSITORY https://github.com/webmproject/libwebp.git
+        GIT_SHALLOW 1
+        GIT_TAG v1.5.0
+    )
+    FetchContent_MakeAvailable(libwebp)
+    set(WEBP_LIBRARY webp)
+    set(WEBP_INCLUDE_DIR ${libwebp_SOURCE_DIR}/src)
+endif()
+
+find_path(AVIF_INCLUDE_DIR avif/avif.h PATHS "/usr/include" "${SYSROOT_DIR}/usr/include")
+find_library(AVIF_LIBRARY NAMES avif libavif.so.16 PATHS "/usr/lib/x86_64-linux-gnu" "/usr/lib" "${SYSROOT_DIR}/usr/lib/x86_64-linux-gnu")
+if(NOT AVIF_INCLUDE_DIR OR NOT AVIF_LIBRARY)
+    set(AVIF_CODEC_AOM SYSTEM CACHE STRING "" FORCE)
+    set(AVIF_LIBYUV OFF CACHE STRING "" FORCE)
+    FetchContent_Declare(
+        libavif
+        GIT_REPOSITORY https://github.com/AOMediaCodec/libavif.git
+        GIT_SHALLOW 1
+        GIT_TAG v1.2.1
+    )
+    FetchContent_MakeAvailable(libavif)
+    set(AVIF_LIBRARY avif)
+    set(AVIF_INCLUDE_DIR ${libavif_SOURCE_DIR}/include)
+endif()
+
+find_library(LIQUID_LIBRARY NAMES liquid libliquid.so.1 PATHS "/usr/lib/x86_64-linux-gnu" "/usr/lib" "${SYSROOT_DIR}/usr/lib/x86_64-linux-gnu")
+if(NOT LIQUID_LIBRARY)
+    set(LIQUID_LIBRARY liquid)
+endif()
+
 add_executable(dsp_plotter
     main.cpp
     dsp_engine.cpp
@@ -117,10 +215,12 @@ target_link_libraries(dsp_plotter
     CLI11::CLI11
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    ${WEBP_LIBRARY}
+    ${AVIF_LIBRARY}
 )
 
 target_compile_options(dsp_plotter PRIVATE -Wno-stringop-overflow)
-target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR})
+target_include_directories(dsp_plotter PRIVATE ${stb_SOURCE_DIR} ${WEBP_INCLUDE_DIR} ${AVIF_INCLUDE_DIR})
 
 add_executable(dsp_resample
     dsp_resample.cpp
@@ -193,22 +293,22 @@ add_executable(dsp_demod dsp_demod.cpp dsp_demod_lib.cpp dsp_tuner_lib.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_demod PUBLIC OpenMP::OpenMP_CXX)
 endif()
-target_link_libraries(dsp_demod PRIVATE kfr kfr_dft kfr_dsp kfr_io liquid CLI11::CLI11 spdlog::spdlog)
+target_link_libraries(dsp_demod PRIVATE kfr kfr_dft kfr_dsp kfr_io ${LIQUID_LIBRARY} CLI11::CLI11 spdlog::spdlog)
 target_compile_options(dsp_demod PRIVATE -Wno-stringop-overflow)
 
 # Python bindings
-pybind11_add_module(dsp_plotter_py python_bindings.cpp dsp_engine.cpp plot_generator.cpp dsp_convert_lib.cpp dsp_tuner_lib.cpp dsp_time_domain_lib.cpp dsp_demod_lib.cpp dsp_filter.cpp dsp_resample.cpp dsp_whitener.cpp)
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(dsp_plotter_py PRIVATE "-flto=auto")
-    target_link_options(dsp_plotter_py PRIVATE "-flto=auto")
+pybind11_add_module(dsp_plotter_py NO_EXTRAS python_bindings.cpp dsp_engine.cpp plot_generator.cpp dsp_convert_lib.cpp dsp_tuner_lib.cpp dsp_time_domain_lib.cpp dsp_demod_lib.cpp dsp_filter.cpp dsp_resample.cpp dsp_whitener.cpp)
+if((CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "GNU") AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15.0)
+    target_compile_options(dsp_plotter_py PRIVATE "-flto=${HALF_CPUS}")
+    target_link_options(dsp_plotter_py PRIVATE "-flto=${HALF_CPUS}")
 endif()
 target_compile_definitions(dsp_plotter_py PRIVATE DSP_TOOLS_PYTHON_MODULE=1)
-target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp liquid spdlog::spdlog)
+target_link_libraries(dsp_plotter_py PRIVATE kfr kfr_dft kfr_io kfr_dsp ${LIQUID_LIBRARY} spdlog::spdlog ${WEBP_LIBRARY} ${AVIF_LIBRARY})
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_plotter_py PRIVATE OpenMP::OpenMP_CXX)
 endif()
 target_compile_options(dsp_plotter_py PRIVATE -Wno-stringop-overflow)
-target_include_directories(dsp_plotter_py PRIVATE ${stb_SOURCE_DIR})
+target_include_directories(dsp_plotter_py PRIVATE ${stb_SOURCE_DIR} ${WEBP_INCLUDE_DIR} ${AVIF_INCLUDE_DIR})
 
 # ----------------- TESTS -----------------
 enable_testing()
@@ -220,13 +320,16 @@ add_executable(dsp_tests
     tests/test_tuner.cpp
     tests/test_resample.cpp
     tests/test_format.cpp
+    tests/test_plotter.cpp
+    plot_generator.cpp
 )
 target_compile_definitions(dsp_tests PRIVATE DSP_TOOLS_TEST_MODE=1)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsp_tests PUBLIC OpenMP::OpenMP_CXX)
 endif()
-target_link_libraries(dsp_tests PRIVATE Catch2::Catch2WithMain kfr kfr_dft kfr_dsp kfr_io spdlog::spdlog CLI11::CLI11)
+target_link_libraries(dsp_tests PRIVATE Catch2::Catch2WithMain kfr kfr_dft kfr_dsp kfr_io spdlog::spdlog CLI11::CLI11 ${WEBP_LIBRARY} ${AVIF_LIBRARY})
 target_compile_options(dsp_tests PRIVATE -Wno-stringop-overflow)
+target_include_directories(dsp_tests PRIVATE ${stb_SOURCE_DIR} ${WEBP_INCLUDE_DIR} ${AVIF_INCLUDE_DIR})
 catch_discover_tests(dsp_tests)
 
 if(DSP_TOOLS_COVERAGE)

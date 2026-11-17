@@ -5,7 +5,7 @@ import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
 import debounce from 'lodash.debounce';
 
-const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax, timeDomainMode, windowType, strideRatio }) => {
+const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax, timeDomainMode, windowType, strideRatio, imageFormat, imageQuality }) => {
   const containerRef = useRef(null);
   const [imgUrl, setImgUrl] = useState(null);
   const [error, setError] = useState(null);
@@ -36,7 +36,9 @@ const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colo
           zmin: (panel.subType === 'constellation' || panel.subType === 'time_domain') ? undefined : (zmin === '' ? undefined : Number(zmin)),
           zmax: (panel.subType === 'constellation' || panel.subType === 'time_domain') ? undefined : (zmax === '' ? undefined : Number(zmax)),
           window_type: windowType,
-          stride_ratio: Number(strideRatio)
+          stride_ratio: Number(strideRatio),
+          out_format: imageFormat === 'auto' ? undefined : imageFormat,
+          image_quality: Number(imageQuality)
         })
       });
       const data = await res.json();
@@ -49,7 +51,7 @@ const StaticPlot = ({ panel, activeFile, centerFreq, windowSize, smoothing, colo
     } catch (err) {
       setError(err.toString());
     }
-  }, [panel.subType, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax, timeDomainMode, windowType, strideRatio]);
+  }, [panel.subType, activeFile, centerFreq, windowSize, smoothing, colormap, theme, fillMode, fillColor, zmin, zmax, timeDomainMode, windowType, strideRatio, imageFormat, imageQuality]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -154,7 +156,7 @@ const ColormapSelect = ({ options, value, onChange, gradients }) => {
   );
 };
 
-const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
+const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor, imageFormat, imageQuality }) => {
   const containerRef = useRef(null);
   const [imgUrl, setImgUrl] = useState(initialSpecUrl);
   const [error, setError] = useState(null);
@@ -171,7 +173,9 @@ const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
           width: Math.floor(width),
           height: Math.floor(height),
           theme: theme,
-          fill_color: fftColor
+          fill_color: fftColor,
+          out_format: imageFormat === 'auto' ? 'jpg' : imageFormat,
+          image_quality: Number(imageQuality)
         })
       });
       const data = await res.json();
@@ -183,7 +187,7 @@ const AudioWaveformImage = ({ audioUrl, initialSpecUrl, theme, fftColor }) => {
     } catch (e) {
       setError(e.toString());
     }
-  }, [audioUrl, theme, fftColor]);
+  }, [audioUrl, theme, fftColor, imageFormat, imageQuality]);
 
   const lastSize = useRef({ width: 0, height: 0 });
 
@@ -240,6 +244,8 @@ function App() {
   const [timeDomainMode, setTimeDomainMode] = useState('complex');
   const [windowType, setWindowType] = useState('blackman-harris');
   const [strideRatio, setStrideRatio] = useState('0'); // 0 means auto
+  const [imageFormat, setImageFormat] = useState('auto');
+  const [imageQuality, setImageQuality] = useState(90);
 
   const [imagePlot, setImagePlot] = useState('');
   const [sigplotUrl, setSigplotUrl] = useState('');
@@ -890,7 +896,9 @@ function App() {
               width: 800,
               height: 200,
               theme: 'dark',
-              fill_color: fftColor
+              fill_color: fftColor,
+              out_format: imageFormat === 'auto' ? 'jpg' : imageFormat,
+              image_quality: Number(imageQuality)
             })
         });
         if (plotRes.ok) {
@@ -1186,6 +1194,22 @@ function App() {
               </select>
             </div>
 
+            <div style={{marginBottom: '20px'}}>
+              <label style={{display: 'block', marginBottom: '5px'}}>Static Image Format</label>
+              <select value={imageFormat} onChange={(e) => setImageFormat(e.target.value)} style={{width: '100%'}}>
+                <option value="auto">Auto (PNG / JPG)</option>
+                <option value="jpg">JPG</option>
+                <option value="png">PNG</option>
+                <option value="webp">WEBP</option>
+                <option value="avif">AVIF</option>
+              </select>
+            </div>
+
+            <div style={{marginBottom: '20px'}}>
+              <label style={{display: 'block', marginBottom: '5px'}}>Image Quality ({imageQuality})</label>
+              <input type="range" min="1" max="100" value={imageQuality} onChange={(e) => setImageQuality(Number(e.target.value))} style={{width: '100%', accentColor: 'var(--accent-color)'}} />
+            </div>
+
             <div style={{display: 'flex', justifyContent: 'flex-end'}}>
               <button onClick={() => setIsSettingsModalOpen(false)} style={{background: 'var(--accent-color)', color: '#000', padding: '8px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Done</button>
             </div>
@@ -1466,7 +1490,7 @@ function App() {
                       <div style={{fontSize: '0.8rem', marginBottom: '5px', wordBreak: 'break-all'}}>{panel.outName}</div>
                       <audio controls src={panel.audioUrl} style={{width: '100%', marginBottom: '10px'}} autoPlay></audio>
                       {panel.specUrl && (
-                          <AudioWaveformImage audioUrl={panel.audioUrl} initialSpecUrl={panel.specUrl} theme={theme} fftColor={fftColor} />
+                          <AudioWaveformImage audioUrl={panel.audioUrl} initialSpecUrl={panel.specUrl} theme={theme} fftColor={fftColor} imageFormat={imageFormat} imageQuality={imageQuality} />
                       )}
                       <a href={panel.audioUrl} download={panel.outName} style={{marginTop: '10px', display: 'block', textAlign: 'center', background: 'var(--border-color)', padding: '5px', borderRadius: '4px', color: 'var(--text-color)', textDecoration: 'none', fontSize: '0.9rem'}}>Download WAV</a>
                   </div>
@@ -1487,6 +1511,8 @@ function App() {
                       timeDomainMode={timeDomainMode}
                       windowType={windowType}
                       strideRatio={strideRatio}
+                      imageFormat={imageFormat}
+                      imageQuality={imageQuality}
                     />
                   </div>
               )}

@@ -121,6 +121,8 @@ class PlotRequest(BaseModel):
     fill_color: str = "#00FF00"
     zmin: Optional[float] = None
     zmax: Optional[float] = None
+    out_format: Optional[str] = None
+    image_quality: int = 90
 
 class PlotAudioWaveformRequest(BaseModel):
     input_file: str
@@ -130,6 +132,8 @@ class PlotAudioWaveformRequest(BaseModel):
     fill_color: str = "#00FF00"
     zmin: Optional[float] = None
     zmax: Optional[float] = None
+    out_format: str = "jpg"
+    image_quality: int = 90
 
 class ConvertRequest(BaseModel):
     input_file: str
@@ -455,7 +459,12 @@ async def run_plot(req: PlotRequest):
     saving processing power when interactive capabilities are not required, and applying custom 
     pixel-perfect colormaps and theming before it ever reaches the browser.
     """
-    out_format = "png" if req.plot_fft else "jpg"
+    out_format = req.out_format.lower().lstrip(".") if req.out_format else ("png" if req.plot_fft else "jpg")
+    if out_format == "jpeg":
+        out_format = "jpg"
+    if out_format not in ("png", "jpg", "webp", "avif"):
+        raise HTTPException(status_code=400, detail=f"Unsupported output format: {out_format}")
+    image_quality = max(1, min(100, req.image_quality))
     out_id = f"plot_{uuid.uuid4().hex[:8]}.{out_format}"
     in_path = os.path.join(DATA_DIR, req.input_file)
     try:
@@ -484,7 +493,8 @@ async def run_plot(req: PlotRequest):
             req.fill_mode,
             req.fill_color,
             req.zmin if req.zmin is not None else -1000.0,
-            req.zmax if req.zmax is not None else 1000.0
+            req.zmax if req.zmax is not None else 1000.0,
+            image_quality
         )
         add_to_cache(out_id, data)
         return {"status": "success", "output_file": out_id}
@@ -496,7 +506,7 @@ def get_data(filename: str):
     """
     Retrieve binary or image data by filename.
     
-    Serves the underlying output files (such as .prm interactive plots or .jpg/.png static images) 
+    Serves the underlying output files (such as .prm interactive plots or .jpg/.png/.webp/.avif static images) 
     from the application's data directory or the high-speed in-memory cache. This endpoint acts as 
     the primary content delivery mechanism for the frontend viewers. It intelligently detects the 
     file extension to set the correct MIME type (e.g., application/octet-stream for bluefiles, 
@@ -505,8 +515,10 @@ def get_data(filename: str):
     if filename in memory_cache:
         data = memory_cache[filename]
         media_type = "application/octet-stream"
-        if filename.endswith(".jpg"): media_type = "image/jpeg"
+        if filename.endswith(".jpg") or filename.endswith(".jpeg"): media_type = "image/jpeg"
         elif filename.endswith(".png"): media_type = "image/png"
+        elif filename.endswith(".webp"): media_type = "image/webp"
+        elif filename.endswith(".avif"): media_type = "image/avif"
         return Response(content=data, media_type=media_type)
         
     file_path = os.path.join(DATA_DIR, filename)
@@ -627,17 +639,36 @@ def generate_audio_waveform_plot(input_path: str, output_path: str, req: PlotAud
     
     ax.axis('off')
     plt.tight_layout(pad=0)
-    buf = io.BytesIO()
-    plt.savefig(buf, format='jpg', facecolor=bg_color, edgecolor='none')
+
+    out_format = (req.out_format or "jpg").lower().lstrip(".")
+    if out_format == "jpeg":
+        out_format = "jpg"
+    image_quality = max(1, min(100, req.image_quality))
+
+    fig.canvas.draw()
+    rgba = np.asarray(fig.canvas.buffer_rgba())
+    rgb = np.ascontiguousarray(rgba[:, :, :3], dtype=np.uint8)
+    h, w, _ = rgb.shape
     plt.close(fig)
-    return buf.getvalue()
+
+    import dsp_plotter_py
+    img_bytes = dsp_plotter_py.PlotGenerator.encode_image_mem(rgb.tobytes(), w, h, out_format, image_quality)
+    if output_path:
+        with open(output_path, "wb") as f:
+            f.write(img_bytes)
+    return img_bytes
 
 @app.post("/api/run/plot_audio_waveform")
 async def run_plot_audio_waveform(req: PlotAudioWaveformRequest):
     """
     Generate a symmetric time-domain waveform plot for a stereo WAV file.
     """
-    out_id = f"audio_plot_{uuid.uuid4().hex[:8]}.jpg"
+    out_format = (req.out_format or "jpg").lower().lstrip(".")
+    if out_format == "jpeg":
+        out_format = "jpg"
+    if out_format not in ("png", "jpg", "webp", "avif"):
+        raise HTTPException(status_code=400, detail=f"Unsupported output format: {out_format}")
+    out_id = f"audio_plot_{uuid.uuid4().hex[:8]}.{out_format}"
     
     # Check if the input file is in memory cache, else load from disk
     if req.input_file in memory_cache:

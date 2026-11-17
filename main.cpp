@@ -23,8 +23,8 @@ int main(int argc, char** argv) {
     
     std::string output_name = "";
     std::string out_format = "jpg";
-    int jpeg_quality = 75;
-    int png_compression = 8;
+    int image_quality = 75;
+    int png_compression = -1;
     bool draw_grid = true;
     bool draw_labels = true;
     std::string data_type = "float32";
@@ -69,10 +69,10 @@ int main(int argc, char** argv) {
     app.add_flag("--plot-waterfall", plot_waterfall, "Generate a 2D PSD Waterfall plot");
 
     auto opt_output = app.add_option("-o,--output", output_name, "Output filename (if not specified, derived from input by appending _waterfall/_fft)");    
-    auto* opt_format = app.add_option("--out-format", out_format, "Output image format: png or jpg (default: jpg)")
-        ->check(CLI::IsMember({"png", "jpg", "jpeg"}));
+    auto* opt_format = app.add_option("--out-format", out_format, "Output image format: png, jpg, webp, or avif (default: jpg)")
+        ->check(CLI::IsMember({"png", "jpg", "jpeg", "webp", "avif"}, CLI::ignore_case));
     
-    app.add_option("--jpeg-quality", jpeg_quality, "JPEG compression quality from 1 to 100 (default: 75)")
+    app.add_option("--image-quality,--jpeg-quality", image_quality, "Image compression/quality from 1 to 100 across formats (default: 75)")
         ->check(CLI::Range(1, 100));
 
     app.add_flag("--no-grid,!--grid", draw_grid, "Disable plotting grid lines");
@@ -144,6 +144,21 @@ int main(int argc, char** argv) {
     if (input_file.empty()) {
         spdlog::error("No input file specified. Use -i <file> or run with --generate-examples.");
         return 1;
+    }
+
+    for (char& c : out_format) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (out_format == "jpeg") out_format = "jpg";
+
+    if (opt_format->count() == 0 && opt_output->count() > 0) {
+        size_t dot = output_name.find_last_of('.');
+        if (dot != std::string::npos) {
+            std::string ext = output_name.substr(dot + 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == "jpeg") ext = "jpg";
+            if (ext == "png" || ext == "jpg" || ext == "webp" || ext == "avif") {
+                out_format = ext;
+            }
+        }
     }
 
     if (output_name.empty()) {
@@ -375,7 +390,7 @@ int main(int argc, char** argv) {
             }
             PlotGenerator::generate_fast_waterfall(spectrogram, wfile, width, height, colormap,
                                         final_min_db, final_max_db,
-                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, font_path,
+                                        z_center, fs, std::string(start_time_buf), total_duration_sec, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, image_quality, png_compression, font_path,
                                         box_start_time, box_duration, box_center_freq, box_bw, box_color);
             spdlog::info("Waterfall rendered to {} in {:.5f} seconds", wfile, sw_plot);
         }
@@ -384,7 +399,7 @@ int main(int argc, char** argv) {
             spdlog::stopwatch sw_plot;
             std::string ffile = opt_output->count() > 0 ? output_name : output_name + "_fft." + out_format;
             spdlog::info("Generating Fast FFT Plot {} ({}x{}) (Range: {:.1f} to {:.1f} dB)...", out_format, width, height, final_min_db, final_max_db);
-            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, jpeg_quality, png_compression, colormap, font_path);
+            PlotGenerator::generate_fast_fft_plot(freq_bins, first_frame_mag, ffile, width, height, final_min_db, final_max_db, z_center, fs, draw_grid, draw_labels, out_format, x_ticks, y_ticks, title, image_quality, png_compression, colormap, font_path);
             spdlog::info("FFT rendered to {} in {:.5f} seconds", ffile, sw_plot);
         }
 

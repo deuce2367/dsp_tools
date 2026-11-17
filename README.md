@@ -26,7 +26,7 @@ You can easily accomplish this directly within the web interface:
 This project is built using CMake and requires a modern C++ compiler (C++17 or newer).
 
 ### Dependencies
-All core dependencies (KFR, spdlog, CLI11, stb) are automatically fetched and built using CMake's `FetchContent`. No manual system installations of these libraries are required!
+Core C++ dependencies (KFR, spdlog, CLI11, stb, nlohmann_json, pybind11, Catch2) are automatically fetched and built using CMake's `FetchContent`. Image encoding for WEBP and AVIF uses `libwebp` and `libavif` (and `liquid-dsp` for demodulation), which are resolved from system packages or fetched automatically by CMake.
 
 ### Compiling
 
@@ -38,7 +38,7 @@ All core dependencies (KFR, spdlog, CLI11, stb) are automatically fetched and bu
 3. Run CMake and Make:
    ```bash
    cmake ..
-   make -j$(nproc)
+   make -j$(($(nproc) / 2))
    ```
 
 After compilation, the binaries will be located in the `build/` directory.
@@ -85,13 +85,13 @@ Once running, navigate to `http://localhost:8000` in your browser.
 - **Interactive Waterfall & Spectrum Plots**: Leverages `sigplot` to render backend `dsp_fft` and `dsp_psd` generated X-Midas `Type 2000` bluefiles for hyper-fast interactive canvas navigation (zoom, pan, gain adjustment).
 - **Interactive Time Domain**: A dynamic Time Domain envelope that displays a fast min/max summary of massive complex or real data streams.
 - **Interactive Constellation**: For Complex Baseband (IQ) data, plot high-fidelity scatter plots (cmode 5) natively in the browser to analyze phase, modulation schemes (QPSK/QAM), and symbol dispersion.
-- **Static HD Plot Generator**: Export high-resolution JPEGs/PNGs via `dsp_plotter` directly from the UI.
+- **Static HD Plot Generator**: Export high-resolution JPEGs/PNGs/WEBPs/AVIFs via `dsp_plotter` directly from the UI.
 - **Dynamic DSP Adjustments**: Toggle colormaps (Jet, Grape, Turbo), configure FFT size & time-smoothing, and flip between Light and Dark themes.
 
 ## Tools Overview
 ### 1. `dsp_plotter` (High-Performance Spectral Plotter)
 
-Generates FFT spectrum and waterfall image plots from signals. It uses STB for rapid PNG/JPG encoding and supports dynamic zooming, channelization, and bounding-box annotations.
+Generates FFT spectrum and waterfall image plots from signals. It supports PNG, JPG, WEBP, and AVIF encoding (with `--image-quality` normalized 1-100 across formats), dynamic zooming, channelization, and bounding-box annotations.
 
 ```bash
 # Generate a fast waterfall plot of an entire SDR recording
@@ -99,6 +99,10 @@ Generates FFT spectrum and waterfall image plots from signals. It uses STB for r
 
 # Explicitly request both FFT and Waterfall plots
 ./dsp_plotter -i my_recording.wav --plot-fft --plot-waterfall
+
+# Export as WEBP or AVIF with normalized image quality (1-100)
+./dsp_plotter -i my_recording.prm --out-format webp --image-quality 80
+./dsp_plotter -i my_recording.prm --out-format avif --image-quality 75
 
 # Zoom into a 0.4 MHz sliver centered exactly at 105.9 MHz
 ./dsp_plotter -i sdrplay_105.1MHz.wav --center-freq 105.1 --zoom-center 105.9 --zoom-bw 0.4
@@ -180,6 +184,7 @@ This project relies on several fantastic open-source projects and code snippets:
 
 - **KFR** (https://github.com/kfrlib/kfr): A fast, modern C++ DSP framework (dual-licensed, used under GPLv2+).
 - **stb_image_write.h** & **stb_truetype.h** (https://github.com/nothings/stb): Public domain single-file libraries by Sean Barrett used for rapid PNG/JPEG encoding and TrueType vector font rasterization.
+- **libwebp** (https://github.com/webmproject/libwebp) & **libavif** (https://github.com/AOMediaCodec/libavif): Libraries used for high-efficiency WEBP and AVIF image encoding (BSD License).
 - **CLI11** (https://github.com/CLIUtils/CLI11): Command line parser for C++11 and beyond (BSD 3-Clause).
 - **spdlog** (https://github.com/gabime/spdlog): Fast C++ logging library (MIT License).
 - **nlohmann_json** (https://github.com/nlohmann/json): JSON for Modern C++ (MIT License).

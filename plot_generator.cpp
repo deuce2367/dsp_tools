@@ -1,5 +1,7 @@
 #include "plot_generator.hpp"
 #include <iostream>
+#include <fstream>
+#include <stdexcept>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -13,6 +15,8 @@
 #include <stb_image_write.h>
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
+#include <webp/encode.h>
+#include <avif/avif.h>
 #include "colormap.hpp"
 
 // Helper to parse color strings
@@ -207,13 +211,36 @@ static void draw_text(std::vector<unsigned char>& pixels, int width, int height,
     }
 }
 
-static void save_image(const std::string& filename, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int jpeg_quality, int png_compression) {
-    if (format == "jpg" || format == "jpeg") {
-        stbi_write_jpg(filename.c_str(), width, height, 3, pixels.data(), jpeg_quality);
-    } else {
-        stbi_write_png_compression_level = png_compression;
-        stbi_write_png(filename.c_str(), width, height, 3, pixels.data(), width * 3);
+static std::string normalize_image_format(const std::string& format, const std::string& filename = "") {
+    std::string fmt = format;
+    if (!fmt.empty() && fmt[0] == '.') fmt = fmt.substr(1);
+    for (char& c : fmt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (fmt.empty() && !filename.empty()) {
+        size_t dot = filename.find_last_of('.');
+        if (dot != std::string::npos) {
+            fmt = filename.substr(dot + 1);
+            for (char& c : fmt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
     }
+    if (fmt == "jpeg") fmt = "jpg";
+    if (fmt.empty()) fmt = "png";
+    return fmt;
+}
+
+static int normalize_png_compression(int image_quality, int png_compression) {
+    if (png_compression >= 0) {
+        return std::clamp(png_compression, 0, 9);
+    }
+    int q = std::clamp(image_quality, 1, 100);
+    return std::clamp(static_cast<int>(std::round((q - 1) * 9.0 / 99.0)), 0, 9);
+}
+
+static int normalize_avif_quality(int image_quality) {
+    int q = std::clamp(image_quality, 1, 100);
+    if (q <= 75) {
+        return std::clamp(static_cast<int>(std::round(1.0 + (q - 1) * (49.0 / 74.0))), 1, 100);
+    }
+    return std::clamp(static_cast<int>(std::round(50.0 + (q - 75) * (35.0 / 25.0))), 1, 100);
 }
 
 static void stbi_write_mem_func(void *context, void *data, int size) {
@@ -222,13 +249,117 @@ static void stbi_write_mem_func(void *context, void *data, int size) {
     vec->insert(vec->end(), ptr, ptr + size);
 }
 
-static void save_image_mem(std::vector<uint8_t>& out_buffer, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int jpeg_quality, int png_compression) {
-    if (format == "jpg" || format == "jpeg") {
-        stbi_write_jpg_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), jpeg_quality);
-    } else {
-        stbi_write_png_compression_level = png_compression;
-        stbi_write_png_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), width * 3);
+static void save_image_mem(std::vector<uint8_t>& out_buffer, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int image_quality, int png_compression) {
+    if (width <= 0 || height <= 0 || pixels.size() < static_cast<size_t>(width) * static_cast<size_t>(height) * 3) {
+        throw std::invalid_argument("Invalid image dimensions or pixel buffer size");
     }
+    std::string fmt = normalize_image_format(format);
+    int q = std::clamp(image_quality, 1, 100);
+
+    if (fmt == "jpg") {
+        stbi_write_jpg_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), q);
+    } else if (fmt == "webp") {
+        uint8_t* webp_data = nullptr;
+        size_t webp_size = WebPEncodeRGB(pixels.data(), width, height, width * 3, static_cast<float>(q), &webp_data);
+        if (webp_size == 0 || webp_data == nullptr) {
+            if (webp_data) WebPFree(webp_data);
+            throw std::runtime_error("Failed to encode WebP image");
+        }
+        out_buffer.insert(out_buffer.end(), webp_data, webp_data + webp_size);
+        WebPFree(webp_data);
+    } else if (fmt == "avif") {
+        avifImage* image = avifImageCreate(width, height, 8, AVIF_PIXEL_FORMAT_YUV420);
+        if (!image) {
+            throw std::runtime_error("Failed to create AVIF image");
+        }
+        avifRGBImage rgb;
+        avifRGBImageSetDefaults(&rgb, image);
+        rgb.format = AVIF_RGB_FORMAT_RGB;
+        rgb.depth = 8;
+        rgb.pixels = const_cast<uint8_t*>(pixels.data());
+        rgb.rowBytes = static_cast<uint32_t>(width * 3);
+
+        avifResult convertResult = avifImageRGBToYUV(image, &rgb);
+        if (convertResult != AVIF_RESULT_OK) {
+            avifImageDestroy(image);
+            throw std::runtime_error(std::string("Failed to convert RGB to YUV for AVIF: ") + avifResultToString(convertResult));
+        }
+
+        avifEncoder* encoder = avifEncoderCreate();
+        if (!encoder) {
+            avifImageDestroy(image);
+            throw std::runtime_error("Failed to create AVIF encoder");
+        }
+        int avif_q = normalize_avif_quality(q);
+#if defined(AVIF_VERSION_MAJOR) && (AVIF_VERSION_MAJOR >= 1)
+        encoder->quality = avif_q;
+        encoder->qualityAlpha = AVIF_QUALITY_DEFAULT;
+#else
+        int quantizer = std::clamp(static_cast<int>(std::round((100 - avif_q) * 63.0 / 99.0)), 0, 63);
+        encoder->minQuantizer = quantizer;
+        encoder->maxQuantizer = quantizer;
+#endif
+        encoder->speed = 6;
+        encoder->maxThreads = 4;
+
+        avifRWData avifOutput = AVIF_DATA_EMPTY;
+        avifResult encodeResult = avifEncoderWrite(encoder, image, &avifOutput);
+        avifEncoderDestroy(encoder);
+        avifImageDestroy(image);
+
+        if (encodeResult != AVIF_RESULT_OK) {
+            avifRWDataFree(&avifOutput);
+            throw std::runtime_error(std::string("Failed to encode AVIF image: ") + avifResultToString(encodeResult));
+        }
+
+        out_buffer.insert(out_buffer.end(), avifOutput.data, avifOutput.data + avifOutput.size);
+        avifRWDataFree(&avifOutput);
+    } else if (fmt == "png") {
+        stbi_write_png_compression_level = normalize_png_compression(q, png_compression);
+        stbi_write_png_to_func(stbi_write_mem_func, &out_buffer, width, height, 3, pixels.data(), width * 3);
+    } else {
+        throw std::invalid_argument("Unsupported output image format: " + format);
+    }
+}
+
+static void save_image(const std::string& filename, int width, int height, const std::vector<unsigned char>& pixels, const std::string& format, int image_quality, int png_compression) {
+    std::string fmt = normalize_image_format(format, filename);
+    int q = std::clamp(image_quality, 1, 100);
+
+    if (fmt == "jpg") {
+        stbi_write_jpg(filename.c_str(), width, height, 3, pixels.data(), q);
+    } else if (fmt == "png") {
+        stbi_write_png_compression_level = normalize_png_compression(q, png_compression);
+        stbi_write_png(filename.c_str(), width, height, 3, pixels.data(), width * 3);
+    } else if (fmt == "webp" || fmt == "avif") {
+        std::vector<uint8_t> out_buffer;
+        save_image_mem(out_buffer, width, height, pixels, fmt, q, png_compression);
+        std::ofstream out(filename, std::ios::binary);
+        if (!out) {
+            throw std::runtime_error("Failed to open output file for writing: " + filename);
+        }
+        out.write(reinterpret_cast<const char*>(out_buffer.data()), static_cast<std::streamsize>(out_buffer.size()));
+    } else {
+        throw std::invalid_argument("Unsupported output image format: " + format);
+    }
+}
+
+void PlotGenerator::encode_image_mem(const std::vector<uint8_t>& rgb_pixels,
+                                     int width, int height,
+                                     std::vector<uint8_t>& out_buffer,
+                                     const std::string& out_format,
+                                     int image_quality,
+                                     int png_compression) {
+    save_image_mem(out_buffer, width, height, rgb_pixels, out_format, image_quality, png_compression);
+}
+
+void PlotGenerator::encode_image_file(const std::vector<uint8_t>& rgb_pixels,
+                                      int width, int height,
+                                      const std::string& output_filename,
+                                      const std::string& out_format,
+                                      int image_quality,
+                                      int png_compression) {
+    save_image(output_filename, width, height, rgb_pixels, out_format, image_quality, png_compression);
 }
 
 static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_width, int full_height, 

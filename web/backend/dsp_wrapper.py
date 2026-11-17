@@ -2,7 +2,8 @@ import os
 import sys
 from typing import Optional, List, Dict, Any
 
-DSP_BIN_DIR = os.getenv("DSP_BIN_DIR", "/home/apsmith/.gemini/antigravity/scratch/dsp_tools/build")
+_DEFAULT_BUILD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../build"))
+DSP_BIN_DIR = os.getenv("DSP_BIN_DIR", _DEFAULT_BUILD_DIR if os.path.exists(_DEFAULT_BUILD_DIR) else "/home/apsmith/.gemini/antigravity/scratch/dsp_tools/build")
 if DSP_BIN_DIR not in sys.path:
     sys.path.append(DSP_BIN_DIR)
 
@@ -28,13 +29,13 @@ def run_psd(input_file: str, center_freq: float, zoom_center: float, zoom_bw: fl
     except Exception as e:
         raise RuntimeError(f"PSD Pipeline failed: {e}")
 
-def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, window_type: str, stride_ratio: float, plot_fft: bool, plot_waterfall: bool, plot_time_domain: bool, time_domain_mode: str, plot_constellation: bool, colormap: str, width: int, height: int, theme: str = "dark", fill_mode: str = "gradient", fill_color: str = "#00FF00", zmin: float = -1000.0, zmax: float = 1000.0) -> bytes:
+def run_plot(input_file: str, out_format: str, center_freq: float, zoom_center: float, zoom_bw: float, start_time: float, duration: float, window_size: int, smoothing: int, window_type: str, stride_ratio: float, plot_fft: bool, plot_waterfall: bool, plot_time_domain: bool, time_domain_mode: str, plot_constellation: bool, colormap: str, width: int, height: int, theme: str = "dark", fill_mode: str = "gradient", fill_color: str = "#00FF00", zmin: float = -1000.0, zmax: float = 1000.0, image_quality: int = 90) -> bytes:
     """Runs Plot pipeline via native python bindings and returns the generated image bytes."""
     try:
         import dsp_plotter_py
         return dsp_plotter_py.run_plot_pipeline(
             input_file, out_format, center_freq, zoom_center, zoom_bw, start_time, duration,
-            window_size, smoothing, window_type, stride_ratio, plot_fft, plot_waterfall, plot_time_domain, time_domain_mode, plot_constellation, colormap, width, height, theme, fill_mode, fill_color, zmin, zmax
+            window_size, smoothing, window_type, stride_ratio, plot_fft, plot_waterfall, plot_time_domain, time_domain_mode, plot_constellation, colormap, width, height, theme, fill_mode, fill_color, zmin, zmax, image_quality
         )
     except Exception as e:
         raise RuntimeError(f"Plot Pipeline failed: {e}")

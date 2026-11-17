@@ -33,7 +33,7 @@ The frequency-domain engine supports two mathematically distinct algorithms depe
 ### Background & Motivation
 Before you can effectively process an unknown RF recording, you must understand what is inside it. Blindly applying filters or demodulators to a gigabyte-sized binary file is an exercise in frustration. 
 
-The `dsp_plotter` is the "microscope" of the DSP suite. It calculates the Short-Time Fourier Transform (STFT) of the raw IQ or real data and maps the time/frequency/magnitude dimensions to the Y/X/Color axes of a JPEG or PNG image. 
+The `dsp_plotter` is the "microscope" of the DSP suite. It calculates the Short-Time Fourier Transform (STFT) of the raw IQ or real data and maps the time/frequency/magnitude dimensions to the Y/X/Color axes of a JPEG, PNG, WEBP, or AVIF image. 
 
 By offloading the heavy mathematics to SIMD-accelerated frameworks and natively memory-mapping large files, it can render gigabytes of SDR recordings into human-readable visual summaries in fractions of a second, allowing analysts to instantly spot target signals, fading, interference, and temporal patterns.
 

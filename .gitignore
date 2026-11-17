@@ -11,6 +11,8 @@ Makefile
 *.png
 *.jpg
 *.jpeg
+*.webp
+*.avif
 *.bin
 *.prm
 *.sigmf-meta
