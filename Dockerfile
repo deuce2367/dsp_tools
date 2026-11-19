@@ -9,8 +9,9 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libomp-dev \
     libliquid-dev \
+    libfftw3-dev \
     libwebp-dev \
-    libavif-dev \
+    libaom-dev \
     gcovr \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,9 +36,6 @@ FROM python:3.13-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     libgomp1 \
-    libliquid-dev \
-    libwebp-dev \
-    libavif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group

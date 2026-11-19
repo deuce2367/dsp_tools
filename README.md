@@ -26,7 +26,7 @@ You can easily accomplish this directly within the web interface:
 This project is built using CMake and requires a modern C++ compiler (C++17 or newer).
 
 ### Dependencies
-Core C++ dependencies (KFR, spdlog, CLI11, stb, nlohmann_json, pybind11, Catch2) are automatically fetched and built using CMake's `FetchContent`. Image encoding for WEBP and AVIF uses `libwebp` and `libavif` (and `liquid-dsp` for demodulation), which are resolved from system packages or fetched automatically by CMake.
+Core C++ dependencies (KFR, spdlog, CLI11, stb, nlohmann_json, pybind11, Catch2, libavif) are automatically fetched and built using CMake's `FetchContent`. By default (`-DDSP_TOOLS_STATIC=ON`), all CLI tools are built as fully self-contained, statically linked executables (`libwebp.a`, `libsharpyuv.a`, `libavif.a`, `libaom.a`, `libliquid.a`, `libfftw3f.a`, and C++/OpenMP/libc archives) so they can be copied and executed across any x86-64 Linux environment without external shared library dependencies.
 
 ### Compiling
 
