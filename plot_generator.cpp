@@ -104,6 +104,7 @@ struct FontAtlas {
     bool loaded = false;
     std::string path = "";
     int scale = 1;
+    int base_font_size = 12;
     stbtt_bakedchar cdata[96]; // ASCII 32..126
     std::vector<unsigned char> bitmap;
     int tex_w = 512;
@@ -111,15 +112,18 @@ struct FontAtlas {
     float pixel_height;
 };
 
-static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
+static FontAtlas& get_font_atlas(const std::string& font_path, int scale, int base_font_size = 12) {
     static FontAtlas atlas;
-    if (atlas.loaded && atlas.path == font_path && atlas.scale == scale) {
+    int effective_base = (base_font_size > 0) ? base_font_size : 12;
+    int effective_scale = std::max(1, scale);
+    if (atlas.loaded && atlas.path == font_path && atlas.scale == effective_scale && atlas.base_font_size == effective_base) {
         return atlas;
     }
     
     atlas.loaded = false;
     atlas.path = font_path;
-    atlas.scale = scale;
+    atlas.scale = effective_scale;
+    atlas.base_font_size = effective_base;
     
     std::vector<unsigned char> ttf_buffer;
     if (!font_path.empty()) {
@@ -144,11 +148,12 @@ static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
         ttf_data = DejaVuSansMono_ttf; // Fallback to embedded high-quality font
     }
     
-    atlas.pixel_height = 12.0f * scale; // 12px base font size
+    atlas.pixel_height = static_cast<float>(effective_base * effective_scale);
     
-    // Scale texture size based on scale
-    atlas.tex_w = 512 * scale;
-    atlas.tex_h = 512 * scale;
+    // Scale texture size based on pixel height relative to 12px base
+    int tex_scale = std::max(1, (static_cast<int>(atlas.pixel_height) + 11) / 12);
+    atlas.tex_w = 512 * tex_scale;
+    atlas.tex_h = 512 * tex_scale;
     atlas.bitmap.resize(atlas.tex_w * atlas.tex_h);
     
     int ret = stbtt_BakeFontBitmap(ttf_data, 0, atlas.pixel_height, atlas.bitmap.data(), atlas.tex_w, atlas.tex_h, 32, 96, atlas.cdata);
@@ -158,8 +163,8 @@ static FontAtlas& get_font_atlas(const std::string& font_path, int scale) {
     return atlas;
 }
 
-static int get_text_width(const std::string& text, int scale, const std::string& font_path) {
-    FontAtlas& atlas = get_font_atlas(font_path, scale);
+static int get_text_width(const std::string& text, int scale, const std::string& font_path, int base_font_size = 12) {
+    FontAtlas& atlas = get_font_atlas(font_path, scale, base_font_size);
     if (atlas.loaded) {
         float xpos = 0;
         float ypos = 0;
@@ -171,13 +176,14 @@ static int get_text_width(const std::string& text, int scale, const std::string&
         }
         return static_cast<int>(xpos);
     } else {
-        return text.length() * 8 * scale;
+        int effective_base = (base_font_size > 0) ? base_font_size : 12;
+        return static_cast<int>(text.length() * (effective_base * 2 / 3) * std::max(1, scale));
     }
 }
 
 // Draw text onto image
-static void draw_text(std::vector<unsigned char>& pixels, int width, int height, int x, int y, const std::string& text, RGB color, int scale = 1, const std::string& font_path = "") {
-    FontAtlas& atlas = get_font_atlas(font_path, scale);
+static void draw_text(std::vector<unsigned char>& pixels, int width, int height, int x, int y, const std::string& text, RGB color, int scale = 1, const std::string& font_path = "", int base_font_size = 12) {
+    FontAtlas& atlas = get_font_atlas(font_path, scale, base_font_size);
     
     if (atlas.loaded) {
         float xpos = x;
@@ -344,6 +350,14 @@ static void save_image(const std::string& filename, int width, int height, const
     }
 }
 
+int PlotGenerator::effective_png_compression(int image_quality, int png_compression) {
+    return normalize_png_compression(image_quality, png_compression);
+}
+
+int PlotGenerator::effective_avif_quality(int image_quality) {
+    return normalize_avif_quality(image_quality);
+}
+
 void PlotGenerator::encode_image_mem(const std::vector<uint8_t>& rgb_pixels,
                                      int width, int height,
                                      std::vector<uint8_t>& out_buffer,
@@ -362,6 +376,43 @@ void PlotGenerator::encode_image_file(const std::vector<uint8_t>& rgb_pixels,
     save_image(output_filename, width, height, rgb_pixels, out_format, image_quality, png_compression);
 }
 
+static void compute_plot_margins(int out_width, int out_height, bool draw_labels, bool has_colorbar, int font_size,
+                                 int& text_scale, int& margin_left, int& margin_bottom, int& margin_top, int& margin_right) {
+    text_scale = std::max(1, std::min(out_width, out_height) / 800);
+    if (!draw_labels) {
+        margin_left = 0;
+        margin_bottom = 0;
+        margin_top = 0;
+        margin_right = 0;
+        return;
+    }
+    int effective_font = (font_size > 0) ? font_size : 12;
+    if (effective_font == 12) {
+        margin_left = 50 * text_scale;
+        margin_bottom = 28 * text_scale;
+        margin_top = 30 * text_scale;
+        margin_right = has_colorbar ? (45 * text_scale) : (25 * text_scale);
+    } else {
+        float ratio = static_cast<float>(effective_font) / 12.0f;
+        margin_left = std::max(24 * text_scale, static_cast<int>(std::round(50 * text_scale * ratio)));
+        margin_bottom = std::max(16 * text_scale, static_cast<int>(std::round(28 * text_scale * ratio)));
+        margin_top = std::max(18 * text_scale, static_cast<int>(std::round(30 * text_scale * ratio)));
+        margin_right = has_colorbar
+            ? std::max(24 * text_scale, static_cast<int>(std::round(45 * text_scale * ratio)))
+            : std::max(14 * text_scale, static_cast<int>(std::round(25 * text_scale * ratio)));
+        if (margin_left + margin_right > out_width * 2 / 3) {
+            float clamp_x = (out_width * 2.0f / 3.0f) / static_cast<float>(margin_left + margin_right);
+            margin_left = static_cast<int>(margin_left * clamp_x);
+            margin_right = static_cast<int>(margin_right * clamp_x);
+        }
+        if (margin_top + margin_bottom > out_height * 2 / 3) {
+            float clamp_y = (out_height * 2.0f / 3.0f) / static_cast<float>(margin_top + margin_bottom);
+            margin_top = static_cast<int>(margin_top * clamp_y);
+            margin_bottom = static_cast<int>(margin_bottom * clamp_y);
+        }
+    }
+}
+
 static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_width, int full_height, 
                                int plot_x, int plot_y, int plot_w, int plot_h,
                                double center_freq_mhz, double bandwidth_mhz, 
@@ -374,7 +425,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                                const std::string& font_path = "",
                                const std::string& theme = "dark",
                                bool is_db = true,
-                               const std::string& x_axis_title = "Frequency (MHz)") {
+                               const std::string& x_axis_title = "Frequency (MHz)",
+                               int font_size = 12) {
     RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
     RGB grid_color = (theme == "light") ? RGB{0, 0, 0} : RGB{255, 255, 255};
     
@@ -402,6 +454,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
     // Draw Labels
     if (draw_labels) {
         int text_scale = std::max(1, std::min(full_width, full_height) / 800);
+        int effective_font = (font_size > 0) ? font_size : 12;
+        int font_px = effective_font * text_scale;
         
         // X-axis: Frequencies
         if (bandwidth_mhz > 0.0) {
@@ -417,7 +471,7 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 ss << std::fixed << std::setprecision(2) << f;
                 
                 int x_pos = plot_x + (plot_w * i) / num_x_ticks;
-                int text_width = get_text_width(ss.str(), text_scale, font_path);
+                int text_width = get_text_width(ss.str(), text_scale, font_path, effective_font);
                 int draw_x_pos = x_pos - text_width / 2;
                 
                 // Draw tick mark
@@ -429,21 +483,21 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     
                     std::ostringstream ss_last;
                     ss_last << std::fixed << std::setprecision(2) << start_f + step_f * num_x_ticks;
-                    int last_width = get_text_width(ss_last.str(), text_scale, font_path);
+                    int last_width = get_text_width(ss_last.str(), text_scale, font_path, effective_font);
                     int final_label_x = plot_x + plot_w - last_width / 2;
                     if (draw_x_pos + text_width + 5 * text_scale > final_label_x) continue;
                 }
                 
                 int y_pos = plot_y + plot_h + 2 * text_scale;
-                draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
+                draw_text(pixels, full_width, full_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path, effective_font);
                 last_label_end_x = draw_x_pos + text_width;
             }
             
             int title_scale = std::max(1, text_scale - 1);
-            int title_w = get_text_width(x_axis_title, title_scale, font_path);
+            int title_w = get_text_width(x_axis_title, title_scale, font_path, effective_font);
             int title_x = plot_x + plot_w / 2 - title_w / 2;
-            int title_y = plot_y + plot_h + 15 * text_scale;
-            draw_text(pixels, full_width, full_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
+            int title_y = plot_y + plot_h + font_px + 3 * text_scale;
+            draw_text(pixels, full_width, full_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path, effective_font);
         }
 
         // Y-axis: Time or dB
@@ -454,22 +508,22 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 if (t_pos != std::string::npos) {
                     std::string date_str = time_str.substr(0, t_pos);
                     std::string time_only_str = time_str.substr(t_pos + 1);
-                    int date_w = get_text_width(date_str, text_scale, font_path);
-                    int time_w = get_text_width(time_only_str, text_scale, font_path);
+                    int date_w = get_text_width(date_str, text_scale, font_path, effective_font);
+                    int time_w = get_text_width(time_only_str, text_scale, font_path, effective_font);
                     int time_x = std::max(2 * text_scale, plot_x - time_w - 3 * text_scale);
                     int date_x = time_x + (time_w / 2) - (date_w / 2);
-                    draw_text(pixels, full_width, full_height, date_x, plot_y - 24 * text_scale, date_str, axis_color, text_scale, font_path);
-                    draw_text(pixels, full_width, full_height, time_x, plot_y - 12 * text_scale, time_only_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, date_x, plot_y - 2 * font_px, date_str, axis_color, text_scale, font_path, effective_font);
+                    draw_text(pixels, full_width, full_height, time_x, plot_y - font_px, time_only_str, axis_color, text_scale, font_path, effective_font);
                 } else {
-                    int text_w = get_text_width(time_str, text_scale, font_path);
+                    int text_w = get_text_width(time_str, text_scale, font_path, effective_font);
                     int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
-                    draw_text(pixels, full_width, full_height, text_x, plot_y - 12 * text_scale, time_str, axis_color, text_scale, font_path);
+                    draw_text(pixels, full_width, full_height, text_x, plot_y - font_px, time_str, axis_color, text_scale, font_path, effective_font);
                 }
             } else {
                 std::string s0 = "0.00s";
-                int text_w = get_text_width(s0, text_scale, font_path);
+                int text_w = get_text_width(s0, text_scale, font_path, effective_font);
                 int text_x = std::max(2 * text_scale, plot_x - text_w - 3 * text_scale);
-                draw_text(pixels, full_width, full_height, text_x, plot_y - 12 * text_scale, s0, axis_color, text_scale, font_path);
+                draw_text(pixels, full_width, full_height, text_x, plot_y - font_px, s0, axis_color, text_scale, font_path, effective_font);
             }
             
             if (total_duration_sec > 0.0) {
@@ -486,8 +540,8 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                     
                     // Omit the bottom-most label to prevent collision with the X-axis label
                     if (i < num_y_ticks) {
-                        int text_width = get_text_width(ss.str(), text_scale, font_path);
-                        draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, y_pos - 6 * text_scale, ss.str(), axis_color, text_scale, font_path);
+                        int text_width = get_text_width(ss.str(), text_scale, font_path, effective_font);
+                        draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, y_pos - font_px / 2, ss.str(), axis_color, text_scale, font_path, effective_font);
                     }
                 }
             }
@@ -507,13 +561,13 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
                 // Draw tick mark
                 draw_line(pixels, full_width, full_height, plot_x - text_scale, y_pos, plot_x, y_pos, axis_color);
                 
-                int text_width = get_text_width(ss.str(), text_scale, font_path);
+                int text_width = get_text_width(ss.str(), text_scale, font_path, effective_font);
                 
                 // Adjust label position to avoid clipping at the bottom
-                int label_y = y_pos - 6 * text_scale;
-                if (i == num_y_ticks) label_y = y_pos - 12 * text_scale;
+                int label_y = y_pos - font_px / 2;
+                if (i == num_y_ticks) label_y = y_pos - font_px;
                 
-                draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, label_y, ss.str(), axis_color, text_scale, font_path);
+                draw_text(pixels, full_width, full_height, plot_x - text_width - 3 * text_scale, label_y, ss.str(), axis_color, text_scale, font_path, effective_font);
             }
         }
         
@@ -554,30 +608,152 @@ static void draw_axes_and_grid(std::vector<unsigned char>& pixels, int full_widt
             ss_mid << std::fixed << std::setprecision(0) << (max_db + min_db) / 2.0;
             ss_min << std::fixed << std::setprecision(0) << min_db;
             
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y, ss_max.str(), axis_color, text_scale, font_path);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h / 2 - 4 * text_scale, ss_mid.str(), axis_color, text_scale, font_path);
-            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - 10 * text_scale, ss_min.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y, ss_max.str(), axis_color, text_scale, font_path, effective_font);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h / 2 - font_px / 3, ss_mid.str(), axis_color, text_scale, font_path, effective_font);
+            draw_text(pixels, full_width, full_height, leg_x + leg_w + 5 * text_scale, leg_y + leg_h - (font_px - 2 * text_scale), ss_min.str(), axis_color, text_scale, font_path, effective_font);
             
             // Draw 'dB' at the top of the colorbar
             if (is_db) {
-                draw_text(pixels, full_width, full_height, leg_x, leg_y - 12 * text_scale, "dB", axis_color, text_scale, font_path);
+                draw_text(pixels, full_width, full_height, leg_x, leg_y - font_px, "dB", axis_color, text_scale, font_path, effective_font);
             }
         }
         
         // Draw Title
         if (!title.empty()) {
             int title_scale = text_scale + 1; // Make it larger
-            int text_width = get_text_width(title, title_scale, font_path);
+            int text_width = get_text_width(title, title_scale, font_path, effective_font);
             
             // If title overruns, scale it down to fit
             if (text_width > plot_w && title_scale > 1) {
                 title_scale = text_scale;
-                text_width = get_text_width(title, title_scale, font_path);
+                text_width = get_text_width(title, title_scale, font_path, effective_font);
             }
             
             int title_x = plot_x + plot_w / 2 - text_width / 2;
-            int title_y = (plot_y - 12 * title_scale) / 2; // Vertically center in top margin
-            draw_text(pixels, full_width, full_height, title_x, title_y, title, {255, 255, 255}, title_scale, font_path);
+            int title_y = std::max(0, (plot_y - effective_font * title_scale) / 2); // Vertically center in top margin
+            draw_text(pixels, full_width, full_height, title_x, title_y, title, axis_color, title_scale, font_path, effective_font);
+        }
+    }
+}
+
+static void draw_highlight_box(std::vector<unsigned char>& pixels, int out_width, int out_height,
+                               int plot_x, int plot_y, int plot_w, int plot_h,
+                               double center_freq_mhz, double bandwidth_mhz, double total_duration_sec,
+                               double box_start_time, double box_duration,
+                               double box_center_freq, double box_bw,
+                               const std::string& box_color, float box_alpha) {
+    if (box_start_time >= 0 && box_duration > 0 && box_bw > 0 && total_duration_sec > 0.0 && bandwidth_mhz > 0.0) {
+        int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
+        int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
+        
+        double freq_min = center_freq_mhz - bandwidth_mhz / 2.0;
+        double box_freq_min = box_center_freq - box_bw / 2.0;
+        double box_freq_max = box_center_freq + box_bw / 2.0;
+        
+        int start_x = plot_x + static_cast<int>((box_freq_min - freq_min) / bandwidth_mhz * plot_w);
+        int end_x = plot_x + static_cast<int>((box_freq_max - freq_min) / bandwidth_mhz * plot_w);
+        
+        // Clamp to plot area
+        start_x = std::clamp(start_x, plot_x, plot_x + plot_w - 1);
+        end_x = std::clamp(end_x, plot_x, plot_x + plot_w - 1);
+        start_y = std::clamp(start_y, plot_y, plot_y + plot_h - 1);
+        end_y = std::clamp(end_y, plot_y, plot_y + plot_h - 1);
+        
+        RGB color = (box_color == "blue") ? RGB{0, 100, 255} : parse_color(box_color, {255, 0, 0});
+        float alpha = std::clamp(box_alpha, 0.0f, 1.0f);
+        float inv_alpha = 1.0f - alpha;
+        
+        int outline_thickness = std::max(1, out_width / 500);
+        
+        for (int y = start_y; y <= end_y; ++y) {
+            for (int x = start_x; x <= end_x; ++x) {
+                bool is_edge = (x < start_x + outline_thickness || x > end_x - outline_thickness || 
+                                y < start_y + outline_thickness || y > end_y - outline_thickness);
+                
+                size_t idx = (y * out_width + x) * 3;
+                if (is_edge) {
+                    pixels[idx] = color.r;
+                    pixels[idx + 1] = color.g;
+                    pixels[idx + 2] = color.b;
+                } else if (alpha > 0.0f) {
+                    pixels[idx] = static_cast<unsigned char>(pixels[idx] * inv_alpha + color.r * alpha);
+                    pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * inv_alpha + color.g * alpha);
+                    pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * inv_alpha + color.b * alpha);
+                }
+            }
+        }
+    }
+}
+
+static void draw_peak_cell_boxes(std::vector<unsigned char>& pixels, int out_width, int out_height,
+                                 int plot_x, int plot_y, int plot_w, int plot_h,
+                                 int data_time_steps, int data_freq_bins,
+                                 const std::vector<std::pair<int, int>>& peak_cells,
+                                 const std::string& box_color, float box_alpha) {
+    if (peak_cells.empty() || plot_w <= 0 || plot_h <= 0 || data_time_steps <= 0 || data_freq_bins <= 0) return;
+
+    RGB color = (box_color == "blue") ? RGB{0, 100, 255} : parse_color(box_color, {255, 255, 255});
+    float alpha = std::clamp(box_alpha, 0.0f, 1.0f);
+    float inv_alpha = 1.0f - alpha;
+
+    // 0 = none, 1 = interior, 2 = border
+    std::vector<uint8_t> mask(static_cast<size_t>(out_width) * static_cast<size_t>(out_height), 0);
+    int min_half_span = std::max(2, std::min(out_width, out_height) / 200);
+
+    for (const auto& cell : peak_cells) {
+        int r = cell.first;
+        int c = cell.second;
+        if (r < 0 || r >= data_time_steps || c < 0 || c >= data_freq_bins) continue;
+
+        int x0 = plot_x + (c * plot_w) / data_freq_bins;
+        int x1 = plot_x + ((c + 1) * plot_w) / data_freq_bins;
+        int y0 = plot_y + (r * plot_h) / data_time_steps;
+        int y1 = plot_y + ((r + 1) * plot_h) / data_time_steps;
+
+        if (x1 - x0 < 2 * min_half_span) {
+            int cx = (x0 + x1) / 2;
+            x0 = cx - min_half_span;
+            x1 = cx + min_half_span;
+        }
+        if (y1 - y0 < 2 * min_half_span) {
+            int cy = (y0 + y1) / 2;
+            y0 = cy - min_half_span;
+            y1 = cy + min_half_span;
+        }
+
+        x0 = std::clamp(x0, plot_x, plot_x + plot_w - 1);
+        x1 = std::clamp(x1, plot_x, plot_x + plot_w - 1);
+        y0 = std::clamp(y0, plot_y, plot_y + plot_h - 1);
+        y1 = std::clamp(y1, plot_y, plot_y + plot_h - 1);
+
+        for (int y = y0; y <= y1; ++y) {
+            for (int x = x0; x <= x1; ++x) {
+                bool is_edge = (x == x0 || x == x1 || y == y0 || y == y1);
+                size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
+                if (is_edge) {
+                    mask[m_idx] = 2;
+                } else if (mask[m_idx] == 0) {
+                    mask[m_idx] = 1;
+                }
+            }
+        }
+    }
+
+    for (int y = plot_y; y < plot_y + plot_h; ++y) {
+        for (int x = plot_x; x < plot_x + plot_w; ++x) {
+            size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
+            uint8_t state = mask[m_idx];
+            if (state == 0) continue;
+            size_t p_idx = m_idx * 3;
+            if (state == 2) {
+                pixels[p_idx] = color.r;
+                pixels[p_idx + 1] = color.g;
+                pixels[p_idx + 2] = color.b;
+            } else if (state == 1 && alpha > 0.0f) {
+                pixels[p_idx] = static_cast<unsigned char>(pixels[p_idx] * inv_alpha + color.r * alpha);
+                pixels[p_idx + 1] = static_cast<unsigned char>(pixels[p_idx + 1] * inv_alpha + color.g * alpha);
+                pixels[p_idx + 2] = static_cast<unsigned char>(pixels[p_idx + 2] * inv_alpha + color.b * alpha);
+            }
         }
     }
 }
@@ -598,19 +774,21 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                                             const std::string& font_path,
                                             double box_start_time, double box_duration,
                                             double box_center_freq, double box_bw,
-                                            const std::string& box_color) {
+                                            const std::string& box_color,
+                                            float box_alpha,
+                                            int font_size,
+                                            const std::string& theme,
+                                            const std::vector<std::pair<int, int>>& peak_cells) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
     int data_freq_bins = spectrogram_db[0].size();
+    unsigned char bg = (theme == "light") ? 255 : 0;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     
-    std::vector<unsigned char> pixels(out_width * out_height * 3, 0); // Initialize to black
-    
-    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 28 * text_scale : 0;
-    int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? (!colormap.empty() ? 45 * text_scale : 25 * text_scale) : 0;
+    int text_scale, margin_left, margin_bottom, margin_top, margin_right;
+    compute_plot_margins(out_width, out_height, draw_labels, !colormap.empty(), font_size,
+                         text_scale, margin_left, margin_bottom, margin_top, margin_right);
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -648,58 +826,16 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
         }
     }
     
-    // Draw optional box overlay
-    if (box_start_time >= 0 && box_duration > 0 && box_bw > 0) {
-        int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
-        int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
-        
-        double freq_min = center_freq_mhz - bandwidth_mhz / 2.0;
-        double box_freq_min = box_center_freq - box_bw / 2.0;
-        double box_freq_max = box_center_freq + box_bw / 2.0;
-        
-        int start_x = plot_x + static_cast<int>((box_freq_min - freq_min) / bandwidth_mhz * plot_w);
-        int end_x = plot_x + static_cast<int>((box_freq_max - freq_min) / bandwidth_mhz * plot_w);
-        
-        // Clamp to plot area
-        start_x = std::clamp(start_x, plot_x, plot_x + plot_w - 1);
-        end_x = std::clamp(end_x, plot_x, plot_x + plot_w - 1);
-        start_y = std::clamp(start_y, plot_y, plot_y + plot_h - 1);
-        end_y = std::clamp(end_y, plot_y, plot_y + plot_h - 1);
-        
-        RGB color = {255, 0, 0}; // default red
-        if (box_color == "green") color = {0, 255, 0};
-        else if (box_color == "blue") color = {0, 100, 255};
-        else if (box_color == "yellow") color = {255, 255, 0};
-        else if (box_color == "white") color = {255, 255, 255};
-        else if (box_color == "cyan") color = {0, 255, 255};
-        else if (box_color == "magenta") color = {255, 0, 255};
-        else if (box_color == "black") color = {0, 0, 0};
-        
-        int outline_thickness = std::max(1, out_width / 500);
-        
-        for (int y = start_y; y <= end_y; ++y) {
-            for (int x = start_x; x <= end_x; ++x) {
-                bool is_edge = (x < start_x + outline_thickness || x > end_x - outline_thickness || 
-                                y < start_y + outline_thickness || y > end_y - outline_thickness);
-                
-                size_t idx = (y * out_width + x) * 3;
-                if (is_edge) {
-                    pixels[idx] = color.r;
-                    pixels[idx + 1] = color.g;
-                    pixels[idx + 2] = color.b;
-                } else {
-                    // Mild transparency (e.g. blend 30% color with 70% original)
-                    pixels[idx] = static_cast<unsigned char>(pixels[idx] * 0.7 + color.r * 0.3);
-                    pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * 0.7 + color.g * 0.3);
-                    pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * 0.7 + color.b * 0.3);
-                }
-            }
-        }
-    }
+    draw_highlight_box(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                       center_freq_mhz, bandwidth_mhz, total_duration_sec,
+                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha);
+
+    draw_peak_cell_boxes(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha);
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
-                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path);
+                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path, theme, true, "Frequency (MHz)", font_size);
     save_image(output_filename, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
@@ -716,17 +852,20 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
                                            int jpeg_quality,
                                            int png_compression,
                                            const std::string& colormap_name,
-                                           const std::string& font_path) {
+                                           const std::string& font_path,
+                                           int font_size,
+                                           const std::string& theme,
+                                           const std::string& fill_mode,
+                                           const std::string& fill_color_str,
+                                           float fill_opacity) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
 
-    // Dark background
-    std::vector<unsigned char> pixels(out_width * out_height * 3, 10);
+    unsigned char bg = (theme == "light") ? 255 : 10;
+    std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     
-    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 28 * text_scale : 0;
-    int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? 25 * text_scale : 0;
+    int text_scale, margin_left, margin_bottom, margin_top, margin_right;
+    compute_plot_margins(out_width, out_height, draw_labels, false, font_size,
+                         text_scale, margin_left, margin_bottom, margin_top, margin_right);
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -736,7 +875,7 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
     // Use empty string for start_time_iso to avoid printing date/time on FFT
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
-                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path);
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme, true, "Frequency (MHz)", font_size);
 
     // Helper to extract a color from the requested colormap
     auto get_cmap_color = [&](float norm) -> RGB {
@@ -755,6 +894,17 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         return Colormap::get_turbo(norm); // default
     };
 
+    bool has_custom_line = !fill_color_str.empty();
+    RGB custom_line_color = parse_color(fill_color_str, get_cmap_color(0.75f));
+    std::string mode_lower = fill_mode;
+    for (char& c : mode_lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    bool is_gradient_fill = (mode_lower.empty() || mode_lower == "gradient");
+    bool is_no_fill = (mode_lower == "none" || fill_opacity <= 0.001f);
+    RGB solid_fill_color = (mode_lower == "solid" || is_gradient_fill || is_no_fill)
+        ? custom_line_color
+        : parse_color(fill_mode, custom_line_color);
+    float clamped_opacity = std::clamp(fill_opacity, 0.0f, 1.0f);
+
     int prev_x = -1;
     int prev_y = -1;
     int data_bins = magnitude_db.size();
@@ -768,16 +918,18 @@ void PlotGenerator::generate_fast_fft_plot(const std::vector<double>& frequency_
         int y = plot_h - 1 - static_cast<int>(norm_val * (plot_h - 1));
         
         RGB current_color = get_cmap_color(norm_val);
+        RGB line_color = has_custom_line ? custom_line_color : (is_gradient_fill ? current_color : solid_fill_color);
         
         if (x > 0) {
-            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, current_color);
+            draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
         }
         
-        // Fill opacity with gradient
-        for (int fy = y + 1; fy < plot_h; ++fy) {
-            float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
-            RGB fill_color = get_cmap_color(norm_fy);
-            blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+        if (!is_no_fill) {
+            for (int fy = y + 1; fy < plot_h; ++fy) {
+                float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
+                RGB fill_color = is_gradient_fill ? get_cmap_color(norm_fy) : solid_fill_color;
+                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, clamped_opacity);
+            }
         }
         
         prev_x = x;
@@ -804,7 +956,10 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
                                             double box_start_time, double box_duration,
                                             double box_center_freq, double box_bw,
                                             const std::string& box_color,
-                                            const std::string& theme) {
+                                            const std::string& theme,
+                                            float box_alpha,
+                                            int font_size,
+                                            const std::vector<std::pair<int, int>>& peak_cells) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -812,11 +967,9 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
     unsigned char bg = (theme == "light") ? 255 : 10;
     std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
     
-    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 28 * text_scale : 0;
-    int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? (!colormap.empty() ? 45 * text_scale : 25 * text_scale) : 0;
+    int text_scale, margin_left, margin_bottom, margin_top, margin_right;
+    compute_plot_margins(out_width, out_height, draw_labels, !colormap.empty(), font_size,
+                         text_scale, margin_left, margin_bottom, margin_top, margin_right);
     
     int plot_x = margin_left;
     int plot_y = margin_top;
@@ -854,46 +1007,16 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
         }
     }
     
-    if (box_start_time >= 0 && box_duration > 0 && box_bw > 0) {
-        int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
-        int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
-        double freq_min = center_freq_mhz - bandwidth_mhz / 2.0;
-        double box_freq_min = box_center_freq - box_bw / 2.0;
-        double box_freq_max = box_center_freq + box_bw / 2.0;
-        int start_x = plot_x + static_cast<int>((box_freq_min - freq_min) / bandwidth_mhz * plot_w);
-        int end_x = plot_x + static_cast<int>((box_freq_max - freq_min) / bandwidth_mhz * plot_w);
-        start_x = std::clamp(start_x, plot_x, plot_x + plot_w - 1);
-        end_x = std::clamp(end_x, plot_x, plot_x + plot_w - 1);
-        start_y = std::clamp(start_y, plot_y, plot_y + plot_h - 1);
-        end_y = std::clamp(end_y, plot_y, plot_y + plot_h - 1);
-        RGB color = {255, 0, 0};
-        if (box_color == "green") color = {0, 255, 0};
-        else if (box_color == "blue") color = {0, 100, 255};
-        else if (box_color == "yellow") color = {255, 255, 0};
-        else if (box_color == "white") color = {255, 255, 255};
-        else if (box_color == "cyan") color = {0, 255, 255};
-        else if (box_color == "magenta") color = {255, 0, 255};
-        else if (box_color == "black") color = {0, 0, 0};
-        int outline_thickness = std::max(1, out_width / 500);
-        for (int y = start_y; y <= end_y; ++y) {
-            for (int x = start_x; x <= end_x; ++x) {
-                bool is_edge = (x < start_x + outline_thickness || x > end_x - outline_thickness || 
-                                y < start_y + outline_thickness || y > end_y - outline_thickness);
-                size_t idx = (y * out_width + x) * 3;
-                if (is_edge) {
-                    pixels[idx] = color.r; pixels[idx + 1] = color.g; pixels[idx + 2] = color.b;
-                } else {
-                    pixels[idx] = static_cast<unsigned char>(pixels[idx] * 0.7 + color.r * 0.3);
-                    pixels[idx + 1] = static_cast<unsigned char>(pixels[idx + 1] * 0.7 + color.g * 0.3);
-                    pixels[idx + 2] = static_cast<unsigned char>(pixels[idx + 2] * 0.7 + color.b * 0.3);
-                }
-            }
-        }
-    }
+    draw_highlight_box(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                       center_freq_mhz, bandwidth_mhz, total_duration_sec,
+                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha);
+
+    draw_peak_cell_boxes(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
+                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha);
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
-                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path, theme);
+                       true, max_db, min_db, num_x_ticks, num_y_ticks, colormap, title, font_path, theme, true, "Frequency (MHz)", font_size);
     save_image_mem(out_buffer, out_width, out_height, pixels, out_format, jpeg_quality, png_compression);
 }
 
@@ -913,15 +1036,15 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
                                            const std::string& font_path,
                                            const std::string& theme,
                                            const std::string& fill_mode,
-                                           const std::string& fill_color_hex) {
+                                           const std::string& fill_color_hex,
+                                           float fill_opacity,
+                                           int font_size) {
     if (magnitude_db.empty() || out_width <= 0 || out_height <= 0) return;
     unsigned char bg = (theme == "light") ? 255 : 10;
     std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
-    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 28 * text_scale : 0;
-    int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? 25 * text_scale : 0;
+    int text_scale, margin_left, margin_bottom, margin_top, margin_right;
+    compute_plot_margins(out_width, out_height, draw_labels, false, font_size,
+                         text_scale, margin_left, margin_bottom, margin_top, margin_right);
     int plot_x = margin_left;
     int plot_y = margin_top;
     int plot_w = out_width - margin_left - margin_right;
@@ -929,7 +1052,7 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
 
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, "", 0.0, draw_grid, draw_labels, 
-                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme);
+                       false, max_db, min_db, num_x_ticks, num_y_ticks, "", title, font_path, theme, true, "Frequency (MHz)", font_size);
 
     auto get_cmap_color = [&](float norm) -> RGB {
         if (colormap_name == "electric") return Colormap::get_electric(norm);
@@ -947,16 +1070,8 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         return Colormap::get_turbo(norm); 
     };
 
-    auto parse_hex_color = [](const std::string& hex) -> RGB {
-        if (hex.size() == 7 && hex[0] == '#') {
-            int r, g, b;
-            if (sscanf(hex.c_str() + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-                return RGB{(unsigned char)r, (unsigned char)g, (unsigned char)b};
-            }
-        }
-        return RGB{0, 255, 0};
-    };
-    RGB custom_fill_color = parse_hex_color(fill_color_hex);
+    RGB custom_fill_color = parse_color(fill_color_hex, {0, 255, 0});
+    float clamped_opacity = std::clamp(fill_opacity, 0.0f, 1.0f);
 
     int prev_x = -1;
     int prev_y = -1;
@@ -973,11 +1088,11 @@ void PlotGenerator::generate_fast_fft_plot_mem(const std::vector<double>& freque
         if (x > 0) {
             draw_line(pixels, out_width, out_height, plot_x + prev_x, plot_y + prev_y, plot_x + x, plot_y + y, line_color);
         }
-        if (fill_mode != "none") {
+        if (fill_mode != "none" && clamped_opacity > 0.001f) {
             for (int fy = y + 1; fy < plot_h; ++fy) {
                 float norm_fy = 1.0f - static_cast<float>(fy) / (plot_h - 1);
                 RGB fill_color = (fill_mode == "solid") ? custom_fill_color : get_cmap_color(norm_fy);
-                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, 0.5f);
+                blend_pixel(pixels, out_width, out_height, plot_x + x, plot_y + fy, fill_color, clamped_opacity);
             }
         }
         prev_x = x;
@@ -1000,15 +1115,15 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
                                            const std::string& font_path,
                                            const std::string& theme,
                                            const std::string& color_i_hex,
-                                           const std::string& color_q_hex) {
+                                           const std::string& color_q_hex,
+                                           int font_size) {
     if (time_domain_data.empty() || out_width <= 0 || out_height <= 0) return;
     unsigned char bg = (theme == "light") ? 255 : 10;
     std::vector<unsigned char> pixels(out_width * out_height * 3, bg);
-    int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = draw_labels ? 50 * text_scale : 0;
-    int margin_bottom = draw_labels ? 28 * text_scale : 0;
-    int margin_top = draw_labels ? 30 * text_scale : 0;
-    int margin_right = draw_labels ? 25 * text_scale : 0;
+    int effective_font = (font_size > 0) ? font_size : 12;
+    int text_scale, margin_left, margin_bottom, margin_top, margin_right;
+    compute_plot_margins(out_width, out_height, draw_labels, false, effective_font,
+                         text_scale, margin_left, margin_bottom, margin_top, margin_right);
     int plot_x = margin_left;
     int plot_y = margin_top;
     int plot_w = out_width - margin_left - margin_right;
@@ -1016,7 +1131,7 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
 
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        0.0, 0.0, "", 0.0, draw_grid, draw_labels, 
-                       false, max_val, min_val, num_x_ticks, num_y_ticks, "", title, font_path, theme, false, "Time (seconds)");
+                       false, max_val, min_val, num_x_ticks, num_y_ticks, "", title, font_path, theme, false, "Time (seconds)", effective_font);
 
     if (draw_labels) {
         RGB axis_color = (theme == "light") ? RGB{30, 30, 30} : RGB{255, 255, 255};
@@ -1028,7 +1143,7 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
             ss << std::fixed << std::setprecision(2) << t << "s";
             
             int x_pos = plot_x + (plot_w * i) / num_x_ticks;
-            int text_width = get_text_width(ss.str(), text_scale, font_path);
+            int text_width = get_text_width(ss.str(), text_scale, font_path, effective_font);
             int draw_x_pos = x_pos - text_width / 2;
             
             draw_line(pixels, out_width, out_height, x_pos, plot_y + plot_h, x_pos, plot_y + plot_h + text_scale, axis_color);
@@ -1037,34 +1152,25 @@ void PlotGenerator::generate_time_domain_plot_mem(const std::vector<float>& time
                 if (draw_x_pos < last_label_end_x + 5 * text_scale) continue;
                 std::ostringstream ss_last;
                 ss_last << std::fixed << std::setprecision(2) << start_time_sec + duration_sec << "s";
-                int last_width = get_text_width(ss_last.str(), text_scale, font_path);
+                int last_width = get_text_width(ss_last.str(), text_scale, font_path, effective_font);
                 int final_label_x = plot_x + plot_w - last_width / 2;
                 if (draw_x_pos + text_width + 5 * text_scale > final_label_x) continue;
             }
             
             int y_pos = plot_y + plot_h + 2 * text_scale;
-            draw_text(pixels, out_width, out_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path);
+            draw_text(pixels, out_width, out_height, draw_x_pos, y_pos, ss.str(), axis_color, text_scale, font_path, effective_font);
             last_label_end_x = draw_x_pos + text_width;
         }
-        int title_y = plot_y + plot_h + 15 * text_scale;
+        int title_y = plot_y + plot_h + (effective_font * text_scale) + 3 * text_scale;
         std::string x_axis_title = "Time (seconds)";
         int title_scale = std::max(1, text_scale - 1);
-        int title_w = get_text_width(x_axis_title, title_scale, font_path);
+        int title_w = get_text_width(x_axis_title, title_scale, font_path, effective_font);
         int title_x = plot_x + plot_w / 2 - title_w / 2;
-        draw_text(pixels, out_width, out_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path);
+        draw_text(pixels, out_width, out_height, title_x, title_y, x_axis_title, axis_color, title_scale, font_path, effective_font);
     }
 
-    auto parse_hex_color = [](const std::string& hex) -> RGB {
-        if (hex.size() == 7 && hex[0] == '#') {
-            int r, g, b;
-            if (sscanf(hex.c_str() + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-                return RGB{(unsigned char)r, (unsigned char)g, (unsigned char)b};
-            }
-        }
-        return RGB{0, 255, 0};
-    };
-    RGB color_i = parse_hex_color(color_i_hex);
-    RGB color_q = parse_hex_color(color_q_hex);
+    RGB color_i = parse_color(color_i_hex, {0, 255, 0});
+    RGB color_q = parse_color(color_q_hex, {0, 136, 255});
 
     size_t floats_per_bucket = is_complex ? 4 : 2;
     int data_bins = time_domain_data.size() / floats_per_bucket;
@@ -1132,32 +1238,24 @@ void PlotGenerator::generate_constellation_plot_mem(const std::vector<float>& iq
                                    int jpeg_quality, int png_compression,
                                    const std::string& font_path,
                                    const std::string& theme,
-                                   const std::string& color_hex) {
-    auto parse_hex_color = [](const std::string& hex) -> RGB {
-        if (hex.size() == 7 && hex[0] == '#') {
-            return {
-                static_cast<uint8_t>(std::stoi(hex.substr(1, 2), nullptr, 16)),
-                static_cast<uint8_t>(std::stoi(hex.substr(3, 2), nullptr, 16)),
-                static_cast<uint8_t>(std::stoi(hex.substr(5, 2), nullptr, 16))
-            };
-        }
-        return {0, 255, 0};
-    };
-
+                                   const std::string& color_hex,
+                                   int font_size) {
     RGB bg_color = (theme == "dark") ? RGB{0, 0, 0} : RGB{255, 255, 255};
     RGB axis_color = (theme == "dark") ? RGB{255, 255, 255} : RGB{50, 50, 50};
-    RGB pt_color = parse_hex_color(color_hex);
+    RGB pt_color = parse_color(color_hex, {0, 255, 0});
 
     std::vector<uint8_t> pixels(out_width * out_height * 3, 0);
     for (size_t i = 0; i < pixels.size(); i += 3) {
         pixels[i] = bg_color.r; pixels[i+1] = bg_color.g; pixels[i+2] = bg_color.b;
     }
 
+    int effective_font = (font_size > 0) ? font_size : 12;
     int text_scale = std::max(1, std::min(out_width, out_height) / 800);
-    int margin_left = 60 * text_scale;
-    int margin_bottom = 40 * text_scale;
-    int margin_top = 30 * text_scale;
-    int margin_right = 30 * text_scale;
+    float font_ratio = static_cast<float>(effective_font) / 12.0f;
+    int margin_left = static_cast<int>(std::round(60 * text_scale * font_ratio));
+    int margin_bottom = static_cast<int>(std::round(40 * text_scale * font_ratio));
+    int margin_top = static_cast<int>(std::round(30 * text_scale * font_ratio));
+    int margin_right = static_cast<int>(std::round(30 * text_scale * font_ratio));
 
     if (!draw_labels) { margin_left = 10; margin_bottom = 10; margin_top = 10; margin_right = 10; }
     
@@ -1186,21 +1284,21 @@ void PlotGenerator::generate_constellation_plot_mem(const std::vector<float>& iq
     if (draw_labels) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%.2f", min_val);
-        draw_text(pixels, out_width, out_height, plot_x, plot_y + plot_h + 5, buf, axis_color, text_scale, font_path);
+        draw_text(pixels, out_width, out_height, plot_x, plot_y + plot_h + 5, buf, axis_color, text_scale, font_path, effective_font);
         std::snprintf(buf, sizeof(buf), "%.2f", max_val);
-        draw_text(pixels, out_width, out_height, plot_x + plot_w - get_text_width(buf, text_scale, font_path), plot_y + plot_h + 5, buf, axis_color, text_scale, font_path);
+        draw_text(pixels, out_width, out_height, plot_x + plot_w - get_text_width(buf, text_scale, font_path, effective_font), plot_y + plot_h + 5, buf, axis_color, text_scale, font_path, effective_font);
         
         std::snprintf(buf, sizeof(buf), "%.2f", max_val);
-        draw_text(pixels, out_width, out_height, 2, plot_y, buf, axis_color, text_scale, font_path);
+        draw_text(pixels, out_width, out_height, 2, plot_y, buf, axis_color, text_scale, font_path, effective_font);
         std::snprintf(buf, sizeof(buf), "%.2f", min_val);
-        draw_text(pixels, out_width, out_height, 2, plot_y + plot_h - 15, buf, axis_color, text_scale, font_path);
+        draw_text(pixels, out_width, out_height, 2, plot_y + plot_h - effective_font * text_scale - 3, buf, axis_color, text_scale, font_path, effective_font);
     }
 
     // Draw Title
     if (draw_labels && !title.empty()) {
         int title_scale = std::max(1, text_scale);
-        int title_w = get_text_width(title, title_scale, font_path);
-        draw_text(pixels, out_width, out_height, out_width / 2 - title_w / 2, 5 * text_scale, title, axis_color, title_scale, font_path);
+        int title_w = get_text_width(title, title_scale, font_path, effective_font);
+        draw_text(pixels, out_width, out_height, out_width / 2 - title_w / 2, 5 * text_scale, title, axis_color, title_scale, font_path, effective_font);
     }
 
     size_t num_pts = iq_data.size() / 2;

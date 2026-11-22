@@ -91,7 +91,7 @@ Once running, navigate to `http://localhost:8000` in your browser.
 ## Tools Overview
 ### 1. `dsp_plotter` (High-Performance Spectral Plotter)
 
-Generates FFT spectrum and waterfall image plots from signals. It supports PNG, JPG, WEBP, and AVIF encoding (with `--image-quality` normalized 1-100 across formats), dynamic zooming, channelization, and bounding-box annotations.
+Generates FFT spectrum and waterfall image plots from signals. It supports PNG, JPG, WEBP, and AVIF encoding (with `--image-quality` normalized 1-100 across formats, default `50`), dynamic zooming, channelization, customizable typography (`--font`, `--font-size`), bounding-box annotations (`--box-color`, `--box-alpha`), and spectral peak detection/visualization (`--peak-detection`, `--visualize-peaks`, `--peak-threshold`).
 
 ```bash
 # Generate a fast waterfall plot of an entire SDR recording
@@ -100,15 +100,18 @@ Generates FFT spectrum and waterfall image plots from signals. It supports PNG, 
 # Explicitly request both FFT and Waterfall plots
 ./dsp_plotter -i my_recording.wav --plot-fft --plot-waterfall
 
-# Export as WEBP or AVIF with normalized image quality (1-100)
-./dsp_plotter -i my_recording.prm --out-format webp --image-quality 80
-./dsp_plotter -i my_recording.prm --out-format avif --image-quality 75
+# Export as WEBP or AVIF with normalized image quality (1-100, default: 50)
+./dsp_plotter -i my_recording.prm --out-format webp --image-quality 50
+./dsp_plotter -i my_recording.prm --out-format avif --image-quality 50
 
-# Zoom into a 0.4 MHz sliver centered exactly at 105.9 MHz
-./dsp_plotter -i sdrplay_105.1MHz.wav --center-freq 105.1 --zoom-center 105.9 --zoom-bw 0.4
+# Zoom into a 0.4 MHz sliver centered exactly at 105.9 MHz with custom font size
+./dsp_plotter -i sdrplay_105.1MHz.wav --center-freq 105.1 --zoom-center 105.9 --zoom-bw 0.4 --font-size 14
 
-# Draw a red highlight box over a specific signal
-./dsp_plotter -i my_recording.wav --box-start-time 1.5 --box-duration 2.0 --box-center-freq 105.9 --box-bw 0.2 --box-color red
+# Draw a translucent red highlight box over a specific signal
+./dsp_plotter -i my_recording.wav --box-start-time 1.5 --box-duration 2.0 --box-center-freq 105.9 --box-bw 0.2 --box-color red --box-alpha 0.25
+
+# Detect spectral peaks above noise floor, export CSV, and visualize boxes around detected peak cells
+./dsp_plotter -i my_recording.prm --peak-detection --visualize-peaks --peak-threshold 20 --box-color "#00FF88" --box-alpha 0.25
 ```
 
 ### 2. `dsp_whitener` (Hybrid Interference Reducer)

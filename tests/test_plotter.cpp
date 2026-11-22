@@ -174,4 +174,54 @@ TEST_CASE("PlotGenerator Formats and Normalized Image Quality", "[plotter]") {
             }
         }
     }
+
+    SECTION("Font size, box alpha, theme, and FFT fill options") {
+        std::vector<uint8_t> wf_alpha0;
+        std::vector<uint8_t> wf_alpha1;
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_alpha0, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Box Alpha 0", 50, -1, "",
+            0.2, 0.4, 100.0, 0.8, "#00FF00", "dark", 0.0f, 16
+        );
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_alpha1, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Box Alpha 1", 50, -1, "",
+            0.2, 0.4, 100.0, 0.8, "#00FF00", "dark", 0.9f, 16
+        );
+        REQUIRE(is_valid_png(wf_alpha0));
+        REQUIRE(is_valid_png(wf_alpha1));
+        REQUIRE(wf_alpha0 != wf_alpha1);
+
+        std::vector<uint8_t> wf_no_peaks;
+        std::vector<uint8_t> wf_peaks;
+        std::vector<std::pair<int, int>> peaks = {{5, 10}, {10, 20}, {15, 30}};
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_no_peaks, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Peaks Test", 50, -1, "",
+            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12
+        );
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_peaks, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Peaks Test", 50, -1, "",
+            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12, peaks
+        );
+        REQUIRE(is_valid_png(wf_no_peaks));
+        REQUIRE(is_valid_png(wf_peaks));
+        REQUIRE(wf_peaks != wf_no_peaks);
+
+        std::string fft_custom = "/tmp/test_fft_custom.webp";
+        PlotGenerator::generate_fast_fft_plot(
+            freq_bins, mag_db, fft_custom, width, height,
+            -100.0, -20.0, 100.0, 2.0,
+            true, true, "webp", 4, 4, "Custom FFT", 50, -1, "turbo", "",
+            14, "light", "solid", "#FF5500", 0.4f
+        );
+        auto fft_disk = read_binary_file(fft_custom);
+        REQUIRE(is_valid_webp(fft_disk));
+        std::remove(fft_custom.c_str());
+    }
 }

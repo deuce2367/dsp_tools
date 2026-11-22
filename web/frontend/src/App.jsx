@@ -245,7 +245,7 @@ function App() {
   const [windowType, setWindowType] = useState('blackman-harris');
   const [strideRatio, setStrideRatio] = useState('0'); // 0 means auto
   const [imageFormat, setImageFormat] = useState('auto');
-  const [imageQuality, setImageQuality] = useState(90);
+  const [imageQuality, setImageQuality] = useState(50);
 
   const [imagePlot, setImagePlot] = useState('');
   const [sigplotUrl, setSigplotUrl] = useState('');

@@ -122,7 +122,7 @@ class PlotRequest(BaseModel):
     zmin: Optional[float] = None
     zmax: Optional[float] = None
     out_format: Optional[str] = None
-    image_quality: int = 90
+    image_quality: int = 50
 
 class PlotAudioWaveformRequest(BaseModel):
     input_file: str
@@ -133,7 +133,7 @@ class PlotAudioWaveformRequest(BaseModel):
     zmin: Optional[float] = None
     zmax: Optional[float] = None
     out_format: str = "jpg"
-    image_quality: int = 90
+    image_quality: int = 50
 
 class ConvertRequest(BaseModel):
     input_file: str
