@@ -195,8 +195,10 @@ TEST_CASE("PlotGenerator Formats and Normalized Image Quality", "[plotter]") {
         REQUIRE(wf_alpha0 != wf_alpha1);
 
         std::vector<uint8_t> wf_no_peaks;
-        std::vector<uint8_t> wf_peaks;
-        std::vector<std::pair<int, int>> peaks = {{5, 10}, {10, 20}, {15, 30}};
+        std::vector<uint8_t> wf_peaks_cell;
+        std::vector<uint8_t> wf_peaks_outline;
+        // Adjacent/overlapping cells (5, 10) and (6, 10)
+        std::vector<std::pair<int, int>> peaks = {{5, 10}, {6, 10}, {15, 30}};
         PlotGenerator::generate_fast_waterfall_mem(
             spectrogram, wf_no_peaks, width, height, "gqrx",
             -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
@@ -204,14 +206,33 @@ TEST_CASE("PlotGenerator Formats and Normalized Image Quality", "[plotter]") {
             -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12
         );
         PlotGenerator::generate_fast_waterfall_mem(
-            spectrogram, wf_peaks, width, height, "gqrx",
+            spectrogram, wf_peaks_cell, width, height, "gqrx",
             -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
             true, true, "png", 4, 4, "Peaks Test", 50, -1, "",
-            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12, peaks
+            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12, peaks, "cell"
+        );
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_peaks_outline, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Peaks Test", 50, -1, "",
+            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12, peaks, "outline"
         );
         REQUIRE(is_valid_png(wf_no_peaks));
-        REQUIRE(is_valid_png(wf_peaks));
-        REQUIRE(wf_peaks != wf_no_peaks);
+        REQUIRE(is_valid_png(wf_peaks_cell));
+        REQUIRE(is_valid_png(wf_peaks_outline));
+        REQUIRE(wf_peaks_cell != wf_no_peaks);
+        REQUIRE(wf_peaks_outline != wf_no_peaks);
+        REQUIRE(wf_peaks_outline != wf_peaks_cell);
+
+        std::vector<uint8_t> wf_peaks_thick;
+        PlotGenerator::generate_fast_waterfall_mem(
+            spectrogram, wf_peaks_thick, width, height, "gqrx",
+            -100.0, -20.0, 100.0, 2.0, "0.00s", 1.0,
+            true, true, "png", 4, 4, "Peaks Test", 50, -1, "",
+            -1.0, 0.0, 0.0, 0.0, "#00FF00", "dark", 0.3f, 12, peaks, "outline", 3
+        );
+        REQUIRE(is_valid_png(wf_peaks_thick));
+        REQUIRE(wf_peaks_thick != wf_peaks_outline);
 
         std::string fft_custom = "/tmp/test_fft_custom.webp";
         PlotGenerator::generate_fast_fft_plot(

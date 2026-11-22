@@ -131,6 +131,8 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                                                   int font_size,
                                                   const std::string& theme,
                                                   const std::vector<std::pair<int, int>>& peak_cells,
+                                                  const std::string& visualize_mode,
+                                                  int box_size,
                                                   py::kwargs kwargs) {
             if (kwargs.contains("jpeg_quality")) {
                 image_quality = kwargs["jpeg_quality"].cast<int>();
@@ -138,7 +140,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             PlotGenerator::generate_fast_waterfall(spectrogram_db, output_filename, out_width, out_height, colormap,
                 min_db, max_db, center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec,
                 draw_grid, draw_labels, out_format, num_x_ticks, num_y_ticks, title, image_quality, png_compression,
-                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha, font_size, theme, peak_cells);
+                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha, font_size, theme, peak_cells, visualize_mode, box_size);
         },
             py::arg("spectrogram_db"), py::arg("output_filename"), py::arg("out_width"), py::arg("out_height"),
             py::arg("colormap"), py::arg("min_db"), py::arg("max_db"), py::arg("center_freq_mhz"), py::arg("bandwidth_mhz"),
@@ -147,7 +149,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("image_quality") = 50, py::arg("png_compression") = -1, py::arg("font_path") = "",
             py::arg("box_start_time") = -1.0, py::arg("box_duration") = 0.0, py::arg("box_center_freq") = 0.0, py::arg("box_bw") = 0.0,
             py::arg("box_color") = "red", py::arg("box_alpha") = 0.3f, py::arg("font_size") = 12, py::arg("theme") = "dark",
-            py::arg("peak_cells") = std::vector<std::pair<int, int>>{})
+            py::arg("peak_cells") = std::vector<std::pair<int, int>>{}, py::arg("visualize_mode") = "cell", py::arg("box_size") = 1)
         .def_static("generate_fast_fft_plot", [](const std::vector<double>& frequency_bins,
                                                  const std::vector<double>& magnitude_db,
                                                  const std::string& output_filename,
@@ -202,12 +204,14 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
                                                       const std::string& theme,
                                                       float box_alpha,
                                                       int font_size,
-                                                      const std::vector<std::pair<int, int>>& peak_cells) {
+                                                      const std::vector<std::pair<int, int>>& peak_cells,
+                                                      const std::string& visualize_mode,
+                                                      int box_size) {
             std::vector<uint8_t> out_buffer;
             PlotGenerator::generate_fast_waterfall_mem(spectrogram_db, out_buffer, out_width, out_height, colormap,
                 min_db, max_db, center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec,
                 draw_grid, draw_labels, out_format, num_x_ticks, num_y_ticks, title, image_quality, png_compression,
-                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color, theme, box_alpha, font_size, peak_cells);
+                font_path, box_start_time, box_duration, box_center_freq, box_bw, box_color, theme, box_alpha, font_size, peak_cells, visualize_mode, box_size);
             return py::bytes(reinterpret_cast<const char*>(out_buffer.data()), out_buffer.size());
         },
             py::arg("spectrogram_db"), py::arg("out_width"), py::arg("out_height"),
@@ -217,7 +221,7 @@ PYBIND11_MODULE(dsp_plotter_py, m) {
             py::arg("image_quality") = 50, py::arg("png_compression") = -1, py::arg("font_path") = "",
             py::arg("box_start_time") = -1.0, py::arg("box_duration") = 0.0, py::arg("box_center_freq") = 0.0, py::arg("box_bw") = 0.0,
             py::arg("box_color") = "red", py::arg("theme") = "dark", py::arg("box_alpha") = 0.3f, py::arg("font_size") = 12,
-            py::arg("peak_cells") = std::vector<std::pair<int, int>>{})
+            py::arg("peak_cells") = std::vector<std::pair<int, int>>{}, py::arg("visualize_mode") = "cell", py::arg("box_size") = 1)
         .def_static("generate_fast_fft_plot_mem", [](const std::vector<double>& frequency_bins,
                                                      const std::vector<double>& magnitude_db,
                                                      int out_width, int out_height,

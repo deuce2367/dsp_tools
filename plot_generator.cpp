@@ -641,7 +641,8 @@ static void draw_highlight_box(std::vector<unsigned char>& pixels, int out_width
                                double center_freq_mhz, double bandwidth_mhz, double total_duration_sec,
                                double box_start_time, double box_duration,
                                double box_center_freq, double box_bw,
-                               const std::string& box_color, float box_alpha) {
+                               const std::string& box_color, float box_alpha,
+                               int box_size = 1) {
     if (box_start_time >= 0 && box_duration > 0 && box_bw > 0 && total_duration_sec > 0.0 && bandwidth_mhz > 0.0) {
         int start_y = plot_y + static_cast<int>((box_start_time / total_duration_sec) * plot_h);
         int end_y = plot_y + static_cast<int>(((box_start_time + box_duration) / total_duration_sec) * plot_h);
@@ -663,7 +664,7 @@ static void draw_highlight_box(std::vector<unsigned char>& pixels, int out_width
         float alpha = std::clamp(box_alpha, 0.0f, 1.0f);
         float inv_alpha = 1.0f - alpha;
         
-        int outline_thickness = std::max(1, out_width / 500);
+        int outline_thickness = std::max(1, box_size);
         
         for (int y = start_y; y <= end_y; ++y) {
             for (int x = start_x; x <= end_x; ++x) {
@@ -689,16 +690,24 @@ static void draw_peak_cell_boxes(std::vector<unsigned char>& pixels, int out_wid
                                  int plot_x, int plot_y, int plot_w, int plot_h,
                                  int data_time_steps, int data_freq_bins,
                                  const std::vector<std::pair<int, int>>& peak_cells,
-                                 const std::string& box_color, float box_alpha) {
+                                 const std::string& box_color, float box_alpha,
+                                 const std::string& visualize_mode = "cell",
+                                 int box_size = 1) {
     if (peak_cells.empty() || plot_w <= 0 || plot_h <= 0 || data_time_steps <= 0 || data_freq_bins <= 0) return;
 
     RGB color = (box_color == "blue") ? RGB{0, 100, 255} : parse_color(box_color, {255, 255, 255});
     float alpha = std::clamp(box_alpha, 0.0f, 1.0f);
     float inv_alpha = 1.0f - alpha;
 
+    std::string mode = visualize_mode;
+    for (char& ch : mode) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    bool outline_mode = (mode == "outline");
+
+    int outline_thickness = std::max(1, box_size);
+
     // 0 = none, 1 = interior, 2 = border
     std::vector<uint8_t> mask(static_cast<size_t>(out_width) * static_cast<size_t>(out_height), 0);
-    int min_half_span = std::max(2, std::min(out_width, out_height) / 200);
+    int min_half_span = std::max(outline_thickness + 1, std::min(out_width, out_height) / 200);
 
     for (const auto& cell : peak_cells) {
         int r = cell.first;
@@ -726,14 +735,55 @@ static void draw_peak_cell_boxes(std::vector<unsigned char>& pixels, int out_wid
         y0 = std::clamp(y0, plot_y, plot_y + plot_h - 1);
         y1 = std::clamp(y1, plot_y, plot_y + plot_h - 1);
 
-        for (int y = y0; y <= y1; ++y) {
-            for (int x = x0; x <= x1; ++x) {
-                bool is_edge = (x == x0 || x == x1 || y == y0 || y == y1);
-                size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
-                if (is_edge) {
-                    mask[m_idx] = 2;
-                } else if (mask[m_idx] == 0) {
+        if (outline_mode) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
                     mask[m_idx] = 1;
+                }
+            }
+        } else {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    bool is_edge = (x < x0 + outline_thickness || x > x1 - outline_thickness ||
+                                    y < y0 + outline_thickness || y > y1 - outline_thickness);
+                    size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
+                    if (is_edge) {
+                        mask[m_idx] = 2;
+                    } else if (mask[m_idx] == 0) {
+                        mask[m_idx] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if (outline_mode) {
+        int max_dist_sq = outline_thickness * outline_thickness;
+        for (int y = plot_y; y < plot_y + plot_h; ++y) {
+            for (int x = plot_x; x < plot_x + plot_w; ++x) {
+                size_t m_idx = static_cast<size_t>(y) * static_cast<size_t>(out_width) + static_cast<size_t>(x);
+                if (mask[m_idx] == 0) continue;
+
+                bool is_boundary = false;
+                for (int dy = -outline_thickness; dy <= outline_thickness && !is_boundary; ++dy) {
+                    int ny = y + dy;
+                    for (int dx = -outline_thickness; dx <= outline_thickness; ++dx) {
+                        if (dx * dx + dy * dy > max_dist_sq) continue;
+                        int nx = x + dx;
+                        if (ny < plot_y || ny >= plot_y + plot_h || nx < plot_x || nx >= plot_x + plot_w) {
+                            is_boundary = true;
+                            break;
+                        }
+                        size_t n_idx = static_cast<size_t>(ny) * static_cast<size_t>(out_width) + static_cast<size_t>(nx);
+                        if (mask[n_idx] == 0) {
+                            is_boundary = true;
+                            break;
+                        }
+                    }
+                }
+                if (is_boundary) {
+                    mask[m_idx] = 2;
                 }
             }
         }
@@ -778,7 +828,9 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
                                             float box_alpha,
                                             int font_size,
                                             const std::string& theme,
-                                            const std::vector<std::pair<int, int>>& peak_cells) {
+                                            const std::vector<std::pair<int, int>>& peak_cells,
+                                            const std::string& visualize_mode,
+                                            int box_size) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -828,10 +880,10 @@ void PlotGenerator::generate_fast_waterfall(const std::vector<std::vector<double
     
     draw_highlight_box(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, total_duration_sec,
-                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha);
+                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha, box_size);
 
     draw_peak_cell_boxes(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
-                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha);
+                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha, visualize_mode, box_size);
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 
@@ -959,7 +1011,9 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
                                             const std::string& theme,
                                             float box_alpha,
                                             int font_size,
-                                            const std::vector<std::pair<int, int>>& peak_cells) {
+                                            const std::vector<std::pair<int, int>>& peak_cells,
+                                            const std::string& visualize_mode,
+                                            int box_size) {
     if (spectrogram_db.empty() || out_width <= 0 || out_height <= 0) return;
     
     int data_time_steps = spectrogram_db.size();
@@ -1009,10 +1063,10 @@ void PlotGenerator::generate_fast_waterfall_mem(const std::vector<std::vector<do
     
     draw_highlight_box(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, total_duration_sec,
-                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha);
+                       box_start_time, box_duration, box_center_freq, box_bw, box_color, box_alpha, box_size);
 
     draw_peak_cell_boxes(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
-                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha);
+                         data_time_steps, data_freq_bins, peak_cells, box_color, box_alpha, visualize_mode, box_size);
     
     draw_axes_and_grid(pixels, out_width, out_height, plot_x, plot_y, plot_w, plot_h,
                        center_freq_mhz, bandwidth_mhz, start_time_iso, total_duration_sec, draw_grid, draw_labels, 

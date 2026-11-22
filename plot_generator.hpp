@@ -50,7 +50,9 @@ public:
                                         float box_alpha = 0.3f,
                                         int font_size = 12,
                                         const std::string& theme = "dark",
-                                        const std::vector<std::pair<int, int>>& peak_cells = {});
+                                        const std::vector<std::pair<int, int>>& peak_cells = {},
+                                        const std::string& visualize_mode = "cell",
+                                        int box_size = 1);
 
     // Fast FFT plot rendering
     static void generate_fast_fft_plot(const std::vector<double>& frequency_bins,
@@ -94,7 +96,9 @@ public:
                                         const std::string& theme = "dark",
                                         float box_alpha = 0.3f,
                                         int font_size = 12,
-                                        const std::vector<std::pair<int, int>>& peak_cells = {});
+                                        const std::vector<std::pair<int, int>>& peak_cells = {},
+                                        const std::string& visualize_mode = "cell",
+                                        int box_size = 1);
 
     // Fast FFT plot rendering to memory buffer
     static void generate_fast_fft_plot_mem(const std::vector<double>& frequency_bins,

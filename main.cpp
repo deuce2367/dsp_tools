@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
     std::string data_type = "float32";
     bool peak_detection = false;
     bool visualize_peaks = false;
+    std::string visualize_mode = "cell";
     double peak_threshold = 15.0;
     
     int width = 512;
@@ -107,6 +108,7 @@ int main(int argc, char** argv) {
     double box_bw = 0.0;
     std::string box_color = "white";
     float box_alpha = 0.3f;
+    int box_size = 1;
 
     app.add_flag("--generate-examples", generate_examples, "Generate example_real.bin and example_complex.bin test files");
 
@@ -130,7 +132,9 @@ int main(int argc, char** argv) {
     app.add_flag("--labels,--draw-labels,!--no-labels", draw_labels, "Enable/disable plotting axis labels (default: enabled)");
 
     app.add_flag("--peak-detection", peak_detection, "Enable squelch signal peak detection output to CSV");
-    app.add_flag("--visualize-peaks", visualize_peaks, "Draw boxes around each detected peak cell on the waterfall plot (uses --peak-threshold, --box-color, --box-alpha)");
+    app.add_flag("--visualize-peaks", visualize_peaks, "Draw boxes/outlines around detected peak cells on the waterfall plot (uses --peak-threshold, --box-color, --box-alpha)");
+    auto* opt_vis_mode = app.add_option("--visualize-mode", visualize_mode, "Peak visualization style: 'cell' (individual cell boxes) or 'outline' (merged energy contour) (default: cell)")
+        ->check(CLI::IsMember({"cell", "outline"}, CLI::ignore_case));
     app.add_option("--peak-threshold", peak_threshold, "Signal detection threshold in dB above noise floor (default: 15.0)");
 
     app.add_option("--width", width, "Output image width in pixels (default: 512)");
@@ -175,6 +179,8 @@ int main(int argc, char** argv) {
     app.add_option("--box-color", box_color, "Color for highlight box: name (red, green, blue, yellow, white, cyan, magenta, black), hex (#RRGGBB), or RGB (R,G,B) (default: white)");
     app.add_option("--box-alpha,--box-opacity", box_alpha, "Fill opacity/alpha for highlight box from 0.0 (outline only) to 1.0 (solid) (default: 0.3)")
         ->check(CLI::Range(0.0f, 1.0f));
+    app.add_option("--box-size", box_size, "Line thickness in pixels for highlight and peak boxes/outlines (default: 1)")
+        ->check(CLI::Range(1, 50));
 
     if (argc == 1) {
         std::cout << app.help() << std::endl;
@@ -217,6 +223,10 @@ int main(int argc, char** argv) {
     bool format_inferred_from_ext = false;
     for (char& c : out_format) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (out_format == "jpeg") out_format = "jpg";
+    for (char& c : visualize_mode) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (opt_vis_mode->count() > 0) {
+        visualize_peaks = true;
+    }
 
     if (opt_format->count() == 0 && opt_output->count() > 0) {
         size_t dot = output_name.find_last_of('.');
@@ -454,7 +464,7 @@ int main(int argc, char** argv) {
         else if (plot_waterfall) active_plots_str = defaulted_to_waterfall ? "Waterfall (2D PSD, default)" : "Waterfall (2D PSD)";
         else if (plot_fft) active_plots_str = "FFT (1D Spectrum)";
         if (peak_detection) active_plots_str += " + Peak Detection CSV";
-        if (visualize_peaks) active_plots_str += " + Visualize Peak Cell Boxes";
+        if (visualize_peaks) active_plots_str += " + Visualize Peaks (" + visualize_mode + ")";
 
         bool box_active = (box_start_time >= 0.0 && box_duration > 0.0 && box_bw > 0.0);
         bool zoom_active = (zoom_bw > 0.0 || opt_zoom_center->count() > 0 || opt_zoom_offset->count() > 0);
@@ -521,16 +531,16 @@ int main(int argc, char** argv) {
             spdlog::info("  dB Scale Mode  : Auto-leveling (min: mean - 15 dB, max: peak dB)");
         }
         if (box_active) {
-            spdlog::info("  Highlight Box  : Active -> Time: {:.3f}s to {:.3f}s (dur: {:.3f}s), Freq: {:.6f} MHz (BW: {:.6f} MHz [{:.6f}..{:.6f} MHz]), Color: {}, Alpha: {:.2f}",
+            spdlog::info("  Highlight Box  : Active -> Time: {:.3f}s to {:.3f}s (dur: {:.3f}s), Freq: {:.6f} MHz (BW: {:.6f} MHz [{:.6f}..{:.6f} MHz]), Color: {}, Alpha: {:.2f}, Line Size: {}px",
                          box_start_time, box_start_time + box_duration, box_duration,
                          box_center_freq, box_bw, box_center_freq - box_bw / 2.0, box_center_freq + box_bw / 2.0,
-                         box_color, box_alpha);
+                         box_color, box_alpha, box_size);
         } else {
             spdlog::info("  Highlight Box  : Disabled");
         }
         if (peak_detection || visualize_peaks) {
-            spdlog::info("  Peak Detector  : Active (Threshold: +{:.1f} dB above noise floor, CSV: {}, Visualize Cells: {}, Box Color: {}, Alpha: {:.2f})",
-                         peak_threshold, peak_detection ? "Yes" : "No", visualize_peaks ? "Yes" : "No", box_color, box_alpha);
+            spdlog::info("  Peak Detector  : Active (Threshold: +{:.1f} dB above noise floor, CSV: {}, Visualize: {} [mode: {}], Color: {}, Alpha: {:.2f}, Line Size: {}px)",
+                         peak_threshold, peak_detection ? "Yes" : "No", visualize_peaks ? "Yes" : "No", visualize_mode, box_color, box_alpha, box_size);
         }
         spdlog::info("==================================================================");
         
@@ -606,40 +616,212 @@ int main(int argc, char** argv) {
         spdlog::info("==================================================================");
 
         std::vector<std::pair<int, int>> detected_peak_cells;
+        std::vector<std::pair<int, int>> detected_outline_cells;
         if ((peak_detection || visualize_peaks) && !spectrogram.empty()) {
             spdlog::stopwatch sw_peaks;
-            std::string csv_file = output_name + "_peaks.csv";
-            std::ofstream out_csv;
+            double threshold_db = noise_floor_db + peak_threshold;
+            double step_dur_s = (file_sr > 0.0) ? (static_cast<double>(actual_step_size) / file_sr) : 0.0;
+            double bin_bw_mhz = (num_bins > 0) ? (fs / static_cast<double>(num_bins)) : 0.0;
+            double freq_min_mhz = z_center - (fs / 2.0);
+
+            std::string peaks_csv_file = output_name + "_peaks.csv";
+            std::string outlines_csv_file = output_name + "_outlines.csv";
+            std::ofstream out_peaks_csv;
             if (peak_detection) {
-                out_csv.open(csv_file);
-                out_csv << "Time_s,Freq_MHz,Power_dB\n";
+                out_peaks_csv.open(peaks_csv_file);
+                out_peaks_csv << "Row,Bin,Time_s,Duration_s,Freq_MHz,Bandwidth_MHz,Power_dB,SNR_dB\n";
             }
 
+            // Grid marking above-threshold cells connected to local peaks for outline region merging
+            std::vector<uint8_t> active_grid(num_rows * num_bins, 0);
+
             for (size_t r = 0; r < num_rows; ++r) {
-                double time_s = result.original_start_time + (file_sr > 0.0 ? (r * static_cast<double>(actual_step_size)) / file_sr : 0.0);
+                double time_s = result.original_start_time + r * step_dur_s;
                 for (size_t c = 1; c + 1 < num_bins; ++c) {
                     double val = spectrogram[r][c];
-                    if (val > noise_floor_db + peak_threshold) {
+                    if (val > threshold_db) {
                         if (val > spectrogram[r][c - 1] && val > spectrogram[r][c + 1]) {
                             detected_peak_cells.emplace_back(static_cast<int>(r), static_cast<int>(c));
                             if (peak_detection) {
-                                double freq_mhz = z_center - (fs / 2.0) + (c * fs / num_bins);
-                                out_csv << std::fixed << std::setprecision(3) << time_s << ","
-                                        << std::setprecision(6) << freq_mhz << ","
-                                        << std::setprecision(1) << val << "\n";
+                                double freq_mhz = freq_min_mhz + (c + 0.5) * bin_bw_mhz;
+                                out_peaks_csv << r << "," << c << ","
+                                              << std::fixed << std::setprecision(4) << time_s << ","
+                                              << std::setprecision(4) << step_dur_s << ","
+                                              << std::setprecision(6) << freq_mhz << ","
+                                              << std::setprecision(6) << bin_bw_mhz << ","
+                                              << std::setprecision(2) << val << ","
+                                              << std::setprecision(2) << (val - noise_floor_db) << "\n";
+                            }
+                            // Expand horizontally across contiguous bins above threshold in this row
+                            size_t c_left = c;
+                            while (c_left > 0 && spectrogram[r][c_left - 1] > threshold_db) {
+                                --c_left;
+                            }
+                            size_t c_right = c;
+                            while (c_right + 1 < num_bins && spectrogram[r][c_right + 1] > threshold_db) {
+                                ++c_right;
+                            }
+                            for (size_t cb = c_left; cb <= c_right; ++cb) {
+                                active_grid[r * num_bins + cb] = 1;
                             }
                         }
                     }
                 }
             }
             if (peak_detection) {
-                out_csv.close();
-                spdlog::info("Peak Detection : {} peak cells above {:.1f} dB threshold (Floor: {:.2f} dB) in {:.5f}s -> {} ({})",
-                             detected_peak_cells.size(), peak_threshold, noise_floor_db, sw_peaks.elapsed().count(),
-                             csv_file, format_byte_size(get_file_size_bytes(csv_file)));
+                out_peaks_csv.close();
+            }
+
+            for (size_t r = 0; r < num_rows; ++r) {
+                for (size_t c = 0; c < num_bins; ++c) {
+                    if (active_grid[r * num_bins + c]) {
+                        detected_outline_cells.emplace_back(static_cast<int>(r), static_cast<int>(c));
+                    }
+                }
+            }
+
+            // Connected-component clustering matching the visual box neighborhood in outline mode
+            int min_half_span = std::max(std::max(1, box_size) + 1, std::min(width, height) / 200);
+            int approx_plot_w = std::max(1, width - 95 * text_scale);
+            int approx_plot_h = std::max(1, height - 58 * text_scale);
+            int link_r = std::max(1, static_cast<int>(std::ceil((2.0 * min_half_span * num_rows) / approx_plot_h)));
+            int link_c = std::max(1, static_cast<int>(std::ceil((2.0 * min_half_span * num_bins) / approx_plot_w)));
+
+            std::vector<int> visited(num_rows * num_bins, 0);
+            size_t num_outlines = 0;
+            std::ofstream out_outlines_csv;
+            if (peak_detection) {
+                out_outlines_csv.open(outlines_csv_file);
+                out_outlines_csv << "Outline_ID,Start_Time_s,End_Time_s,Duration_s,Center_Freq_MHz,Mean_Freq_MHz,Min_Freq_MHz,Max_Freq_MHz,Min_BW_MHz,Max_BW_MHz,Avg_BW_MHz,Freq_Drift_MHz,Peak_Power_dB,Mean_Power_dB,Peak_SNR_dB,Mean_SNR_dB,Cell_Count,Active_Rows,Duty_Cycle\n";
+            }
+
+            std::vector<std::pair<int, int>> queue;
+            for (size_t r0 = 0; r0 < num_rows; ++r0) {
+                for (size_t c0 = 0; c0 < num_bins; ++c0) {
+                    size_t idx0 = r0 * num_bins + c0;
+                    if (!active_grid[idx0] || visited[idx0]) continue;
+
+                    ++num_outlines;
+                    queue.clear();
+                    queue.emplace_back(static_cast<int>(r0), static_cast<int>(c0));
+                    visited[idx0] = static_cast<int>(num_outlines);
+
+                    int r_min = static_cast<int>(r0), r_max = static_cast<int>(r0);
+                    int c_min_all = static_cast<int>(c0), c_max_all = static_cast<int>(c0);
+                    double peak_power_db = -1e9;
+                    double sum_power_db = 0.0;
+                    double sum_lin_power = 0.0;
+                    double sum_weighted_freq = 0.0;
+
+                    size_t head = 0;
+                    while (head < queue.size()) {
+                        auto [cr, cc] = queue[head++];
+                        if (cr < r_min) r_min = cr;
+                        if (cr > r_max) r_max = cr;
+                        if (cc < c_min_all) c_min_all = cc;
+                        if (cc > c_max_all) c_max_all = cc;
+
+                        double val = spectrogram[cr][cc];
+                        if (val > peak_power_db) peak_power_db = val;
+                        sum_power_db += val;
+                        double lin_p = std::pow(10.0, val / 10.0);
+                        sum_lin_power += lin_p;
+                        double cell_f = freq_min_mhz + (cc + 0.5) * bin_bw_mhz;
+                        sum_weighted_freq += lin_p * cell_f;
+
+                        int nr_start = std::max(0, cr - link_r);
+                        int nr_end = std::min(static_cast<int>(num_rows) - 1, cr + link_r);
+                        int nc_start = std::max(0, cc - link_c);
+                        int nc_end = std::min(static_cast<int>(num_bins) - 1, cc + link_c);
+                        for (int nr = nr_start; nr <= nr_end; ++nr) {
+                            for (int nc = nc_start; nc <= nc_end; ++nc) {
+                                size_t n_idx = static_cast<size_t>(nr) * num_bins + static_cast<size_t>(nc);
+                                if (active_grid[n_idx] && !visited[n_idx]) {
+                                    visited[n_idx] = static_cast<int>(num_outlines);
+                                    queue.emplace_back(nr, nc);
+                                }
+                            }
+                        }
+                    }
+
+                    if (peak_detection) {
+                        int span_rows = r_max - r_min + 1;
+                        std::vector<int> row_cmin(span_rows, static_cast<int>(num_bins));
+                        std::vector<int> row_cmax(span_rows, -1);
+                        for (const auto& [cr, cc] : queue) {
+                            int ri = cr - r_min;
+                            if (cc < row_cmin[ri]) row_cmin[ri] = cc;
+                            if (cc > row_cmax[ri]) row_cmax[ri] = cc;
+                        }
+
+                        double min_bw_mhz = 1e9;
+                        double max_bw_mhz = 0.0;
+                        double sum_bw_mhz = 0.0;
+                        int active_rows = 0;
+                        double first_row_cf = 0.0;
+                        double last_row_cf = 0.0;
+                        bool has_first_cf = false;
+
+                        for (int ri = 0; ri < span_rows; ++ri) {
+                            if (row_cmax[ri] >= row_cmin[ri]) {
+                                ++active_rows;
+                                double r_bw = (row_cmax[ri] - row_cmin[ri] + 1) * bin_bw_mhz;
+                                if (r_bw < min_bw_mhz) min_bw_mhz = r_bw;
+                                if (r_bw > max_bw_mhz) max_bw_mhz = r_bw;
+                                sum_bw_mhz += r_bw;
+
+                                double r_cf = freq_min_mhz + ((row_cmin[ri] + row_cmax[ri] + 1) * 0.5) * bin_bw_mhz;
+                                if (!has_first_cf) {
+                                    first_row_cf = r_cf;
+                                    has_first_cf = true;
+                                }
+                                last_row_cf = r_cf;
+                            }
+                        }
+                        if (active_rows == 0) min_bw_mhz = 0.0;
+                        double avg_bw_mhz = (active_rows > 0) ? (sum_bw_mhz / active_rows) : 0.0;
+                        double start_t = result.original_start_time + r_min * step_dur_s;
+                        double dur_s = span_rows * step_dur_s;
+                        double end_t = start_t + dur_s;
+                        double min_f_mhz = freq_min_mhz + c_min_all * bin_bw_mhz;
+                        double max_f_mhz = freq_min_mhz + (c_max_all + 1) * bin_bw_mhz;
+                        double center_f_mhz = 0.5 * (min_f_mhz + max_f_mhz);
+                        double mean_f_mhz = (sum_lin_power > 0.0) ? (sum_weighted_freq / sum_lin_power) : center_f_mhz;
+                        double freq_drift_mhz = last_row_cf - first_row_cf;
+                        double mean_power_db = (!queue.empty()) ? (sum_power_db / queue.size()) : peak_power_db;
+                        double duty_cycle = (span_rows > 0) ? (static_cast<double>(active_rows) / span_rows) : 1.0;
+
+                        out_outlines_csv << num_outlines << ","
+                                         << std::fixed << std::setprecision(4) << start_t << ","
+                                         << std::setprecision(4) << end_t << ","
+                                         << std::setprecision(4) << dur_s << ","
+                                         << std::setprecision(6) << center_f_mhz << ","
+                                         << std::setprecision(6) << mean_f_mhz << ","
+                                         << std::setprecision(6) << min_f_mhz << ","
+                                         << std::setprecision(6) << max_f_mhz << ","
+                                         << std::setprecision(6) << min_bw_mhz << ","
+                                         << std::setprecision(6) << max_bw_mhz << ","
+                                         << std::setprecision(6) << avg_bw_mhz << ","
+                                         << std::setprecision(6) << freq_drift_mhz << ","
+                                         << std::setprecision(2) << peak_power_db << ","
+                                         << std::setprecision(2) << mean_power_db << ","
+                                         << std::setprecision(2) << (peak_power_db - noise_floor_db) << ","
+                                         << std::setprecision(2) << (mean_power_db - noise_floor_db) << ","
+                                         << queue.size() << ","
+                                         << active_rows << ","
+                                         << std::setprecision(3) << duty_cycle << "\n";
+                    }
+                }
+            }
+            if (peak_detection) {
+                out_outlines_csv.close();
+                spdlog::info("Peak Detection : {} peak cells ({} active bins) merged into {} energy outlines above +{:.1f} dB (Floor: {:.2f} dB) in {:.5f}s",
+                             detected_peak_cells.size(), detected_outline_cells.size(), num_outlines, peak_threshold, noise_floor_db, sw_peaks.elapsed().count());
+                spdlog::info("  Cell Box CSV : {} ({})", peaks_csv_file, format_byte_size(get_file_size_bytes(peaks_csv_file)));
+                spdlog::info("  Outlines CSV : {} ({})", outlines_csv_file, format_byte_size(get_file_size_bytes(outlines_csv_file)));
             } else {
-                spdlog::info("Peak Detection : {} peak cells above {:.1f} dB threshold (Floor: {:.2f} dB) in {:.5f}s (visualizing on waterfall)",
-                             detected_peak_cells.size(), peak_threshold, noise_floor_db, sw_peaks.elapsed().count());
+                spdlog::info("Peak Detection : {} peak cells ({} active bins) merged into {} energy outlines above +{:.1f} dB (Floor: {:.2f} dB) in {:.5f}s (visualizing on waterfall)",
+                             detected_peak_cells.size(), detected_outline_cells.size(), num_outlines, peak_threshold, noise_floor_db, sw_peaks.elapsed().count());
             }
         }
 
@@ -691,6 +873,7 @@ int main(int argc, char** argv) {
                 snprintf(start_time_buf, sizeof(start_time_buf), "%.2fs", start_time);
             }
             const std::vector<std::pair<int, int>> empty_peaks;
+            const auto& cells_to_draw = (visualize_mode == "outline") ? detected_outline_cells : detected_peak_cells;
             PlotGenerator::generate_fast_waterfall(
                 spectrogram, wfile, width, height, colormap,
                 final_min_db, final_max_db,
@@ -699,7 +882,8 @@ int main(int argc, char** argv) {
                 image_quality, png_compression, font_path,
                 box_start_time, box_duration, box_center_freq, box_bw, box_color,
                 box_alpha, font_size, theme,
-                visualize_peaks ? detected_peak_cells : empty_peaks);
+                visualize_peaks ? cells_to_draw : empty_peaks,
+                visualize_mode, box_size);
             log_output_metrics("Waterfall", wfile, sw_plot.elapsed().count());
         }
         

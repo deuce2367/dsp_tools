@@ -110,9 +110,29 @@ Generates FFT spectrum and waterfall image plots from signals. It supports PNG, 
 # Draw a translucent red highlight box over a specific signal
 ./dsp_plotter -i my_recording.wav --box-start-time 1.5 --box-duration 2.0 --box-center-freq 105.9 --box-bw 0.2 --box-color red --box-alpha 0.25
 
-# Detect spectral peaks above noise floor, export CSV, and visualize boxes around detected peak cells
-./dsp_plotter -i my_recording.prm --peak-detection --visualize-peaks --peak-threshold 20 --box-color "#00FF88" --box-alpha 0.25
+# Detect spectral peaks above noise floor, export CSVs (_peaks.csv and _outlines.csv), and visualize boxes or merged energy outlines
+./dsp_plotter -i my_recording.prm --peak-detection --visualize-peaks --visualize-mode cell --peak-threshold 20 --box-color "#00FF88" --box-alpha 0.25
+./dsp_plotter -i my_recording.prm --peak-detection --visualize-peaks --visualize-mode outline --box-size 1 --peak-threshold 20 --box-color "#00FF88" --box-alpha 0.25
 ```
+
+#### Technical Notes: Spectral Energy & Peak Detection
+`dsp_plotter` includes a fast (~0.5 ms overhead) two-tier spectral energy and peak detector controlled by `--peak-detection`, `--visualize-peaks`, `--visualize-mode <cell|outline>`, `--peak-threshold <dB>`, `--box-color`, `--box-alpha`, and `--box-size`:
+
+1. **Order-Statistic (Median) Noise Floor Estimation**:
+   - Rather than using the mean power (where a strong carrier or wideband interferer biases the estimate upward and masks weaker signals), `dsp_plotter` computes the **spatial median** across all bins of the time-averaged PSD. As long as active signals occupy less than 50% of the plotted span, the median tracks the true thermal noise floor.
+2. **Low-Sidelobe Windowing & Welch Averaging**:
+   - Detection operates on the spectrogram after `blackman-harris` windowing (-92 dB sidelobe suppression) and `--averaging` overlapping FFT frames per row (default `4`). This pre-smoothing reduces noise variance and suppresses sidelobe leakage before thresholding (`power_db > median_floor_db + peak_threshold`).
+3. **Cell Mode vs. Outline Mode (2D Morphological Merging)**:
+   - **`--visualize-mode cell`**: Highlights each local spectral peak cell `(row, bin)` individually. When `--peak-detection` is active, writes `<output>_peaks.csv` with per-cell box coordinates and SNR:
+     `Row,Bin,Time_s,Duration_s,Freq_MHz,Bandwidth_MHz,Power_dB,SNR_dB`
+   - **`--visualize-mode outline`**: Expands each detected peak horizontally across contiguous above-threshold bins in the same row and merges adjacent/overlapping cells across time and frequency into unified 2D connected components (acting as a 2D morphological closing/dilation in time-frequency space). Internal cell borders are suppressed so only the outer contour of each contiguous energy region is drawn at `--box-size` pixel thickness (default `1` px).
+   - When `--peak-detection` is active, it also writes `<output>_outlines.csv` summarizing each merged energy region:
+     - **Timing & Duty Cycle**: `Start_Time_s`, `End_Time_s`, `Duration_s`, `Active_Rows`, `Duty_Cycle` (`1.0` for continuous carriers, `< 1.0` for pulsed/bursty emitters).
+     - **Frequency & Drift**: `Center_Freq_MHz` (bounding midpoint), `Mean_Freq_MHz` (power-weighted centroid), `Min_Freq_MHz`, `Max_Freq_MHz`, and `Freq_Drift_MHz` (change in instantaneous center frequency from start to end of the burst, useful for spotting chirps or Doppler drift).
+     - **Instantaneous Bandwidth Statistics**: `Min_BW_MHz`, `Max_BW_MHz`, and `Avg_BW_MHz` measured across the active time rows of the region.
+     - **Power & SNR**: `Peak_Power_dB`, `Mean_Power_dB`, `Peak_SNR_dB`, `Mean_SNR_dB`, and `Cell_Count`.
+4. **Colored Noise / Sloped Passbands**:
+   - Because the threshold is a constant offset above the global median floor, captures with strong passband roll-off at the edges can be pre-flattened with `dsp_whitener` before running `dsp_plotter --peak-detection`.
 
 ### 2. `dsp_whitener` (Hybrid Interference Reducer)
 
